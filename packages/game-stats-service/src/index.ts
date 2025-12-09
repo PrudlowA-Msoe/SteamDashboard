@@ -6,6 +6,7 @@ import { createClient as createRedisClient } from "redis";
 import { Pool } from "pg";
 import client, { collectDefaultMetrics, Registry } from "prom-client";
 import { fetchWithRetry } from "./lib/http";
+import jwt from "jsonwebtoken";
 
 type OwnedGame = {
   appid: number;
@@ -24,6 +25,8 @@ const postgresUrl = process.env.POSTGRES_URL || "postgres://steamapp:steamapp@lo
 const steamApiKey = process.env.STEAM_API_KEY;
 const cacheTtlSeconds = process.env.CACHE_TTL_SECONDS ? Number(process.env.CACHE_TTL_SECONDS) : 3600;
 const metricsToken = process.env.METRICS_TOKEN || "prom-secret";
+const jwtSecret = process.env.JWT_SECRET || "dev-secret-change-me";
+const dotaLiveBase = "https://api.steampowered.com/IDOTA2Match_570";
 
 const redis = createRedisClient({ url: redisUrl });
 redis.on("error", (err: Error) => console.error("[redis] error", err));
@@ -93,8 +96,20 @@ app.get("/games/:appId/summary", async (req, res) => {
   }
 });
 
+app.get("/games/:appId/news", async (req, res) => {
+  const appId = req.params.appId;
+  try {
+    const items = await getGameNews(appId);
+    res.json({ count: items.length, items });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "failed_to_fetch_news", message: (err as Error).message });
+  }
+});
+
 app.get("/players/:steamId/stats", async (req, res) => {
-  const steamId = req.params.steamId;
+  const steamId = resolveSteamId(req, req.params.steamId);
+  if (!steamId) return res.status(401).json({ error: "unauthorized" });
   if (!steamApiKey) {
     return res.status(500).json({ error: "missing_api_key", message: "Set STEAM_API_KEY to query player stats." });
   }
@@ -104,6 +119,46 @@ app.get("/players/:steamId/stats", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "failed_to_fetch_player", message: (err as Error).message });
+  }
+});
+
+app.get("/players/:steamId/friends", async (req, res) => {
+  const steamId = resolveSteamId(req, req.params.steamId);
+  if (!steamId) return res.status(401).json({ error: "unauthorized" });
+  if (!steamApiKey) {
+    return res.status(500).json({ error: "missing_api_key", message: "Set STEAM_API_KEY to query friends." });
+  }
+  try {
+    const friends = await getFriendsWithProfiles(steamId);
+    res.json({ count: friends.length, items: friends });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "failed_to_fetch_friends", message: (err as Error).message });
+  }
+});
+
+app.get("/players/:steamId/inventory", async (req, res) => {
+  const steamId = resolveSteamId(req, req.params.steamId);
+  if (!steamId) return res.status(401).json({ error: "unauthorized" });
+  const appId = String(req.query.appId || "730");
+  const contextId = String(req.query.contextId || "2");
+  try {
+    const items = await getInventory(steamId, appId, contextId);
+    res.json({ count: items.length, items });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "failed_to_fetch_inventory", message: (err as Error).message });
+  }
+});
+
+app.get("/live/dota/featured", async (_req, res) => {
+  if (!steamApiKey) return res.status(500).json({ error: "missing_api_key" });
+  try {
+    const games = await getFeaturedDotaGames();
+    res.json({ count: games.length, items: games });
+  } catch (err) {
+    console.error("[dota_live] failed", err);
+    res.status(500).json({ error: "failed_to_fetch_live", message: (err as Error).message });
   }
 });
 
@@ -268,6 +323,149 @@ async function getCurrentPlayers(appId: string): Promise<number | null> {
     console.warn("[steam] failed to fetch current players", err);
     return null;
   }
+}
+
+async function getFriendsWithProfiles(steamId: string) {
+  const listUrl = `https://api.steampowered.com/ISteamUser/GetFriendList/v1/?key=${steamApiKey}&steamid=${steamId}`;
+  const listResp = await fetchWithRetry(listUrl, {}, 2, 300);
+  const listJson = (await listResp.json()) as any;
+  const friends: string[] = listJson?.friendslist?.friends?.map((f: any) => f.steamid) || [];
+  if (!friends.length) return [];
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < friends.length; i += 50) {
+    chunks.push(friends.slice(i, i + 50));
+  }
+  const profiles: any[] = [];
+  for (const chunk of chunks) {
+    const url = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${steamApiKey}&steamids=${chunk.join(",")}`;
+    const resp = await fetchWithRetry(url, {}, 2, 300);
+    const json = (await resp.json()) as any;
+    profiles.push(...(json.response?.players || []));
+  }
+
+  return profiles.map((p) => ({
+    steamId: p.steamid,
+    personaName: p.personaname,
+    avatar: p.avatarfull,
+    profileUrl: p.profileurl,
+    status: statusText(p.personastate),
+    lastLogoff: p.lastlogoff,
+    game: p.gameextrainfo,
+  }));
+}
+
+function resolveSteamId(req: express.Request, paramId: string) {
+  if (paramId !== "me") return paramId;
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  try {
+    const token = authHeader.slice("Bearer ".length);
+    const decoded = jwt.verify(token, jwtSecret) as jwt.JwtPayload & { steamId?: string };
+    return decoded.steamId || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getFeaturedDotaGames() {
+  const url = `${dotaLiveBase}/GetTopLiveGame/v1/?key=${steamApiKey}&partner=0`;
+  const resp = await fetchWithRetry(url, {}, 2, 300);
+  const json = (await resp.json()) as any;
+  const games = json?.game_list || [];
+  return games.map((g: any) => ({
+    matchId: g.match_id,
+    spectators: g.spectators,
+    averageMmr: g.average_mmr,
+    radiant: {
+      name: g.radiant_name,
+      score: g.radiant_score,
+      towers: g.radiant_tower_state,
+      barracks: g.radiant_barracks_state,
+    },
+    dire: {
+      name: g.dire_name,
+      score: g.dire_score,
+      towers: g.dire_tower_state,
+      barracks: g.dire_barracks_state,
+    },
+    durationSeconds: g.game_time,
+    roshanRespawnTimer: g.roshan_respawn_timer,
+    league: g.league_id,
+    players: (g.players || []).map((p: any) => ({
+      accountId: p.account_id,
+      heroId: p.hero_id,
+      kills: p.kills,
+      deaths: p.deaths,
+      assists: p.assists,
+      gpm: p.gpm,
+      xpm: p.xpm,
+      netWorth: p.net_worth,
+      level: p.level,
+      team: p.team,
+      name: p.name,
+    })),
+  }));
+}
+function statusText(state: number) {
+  switch (state) {
+    case 0:
+      return "Offline";
+    case 1:
+      return "Online";
+    case 2:
+      return "Busy";
+    case 3:
+      return "Away";
+    case 4:
+      return "Snooze";
+    case 5:
+      return "Looking to trade";
+    case 6:
+      return "Looking to play";
+    default:
+      return "Unknown";
+  }
+}
+
+async function getInventory(steamId: string, appId: string, contextId: string) {
+  const url = `https://steamcommunity.com/inventory/${steamId}/${appId}/${contextId}?l=english&count=200`;
+  const resp = await fetchWithRetry(url, {}, 2, 300);
+  const json = (await resp.json()) as any;
+  const assets = json.assets || [];
+  const descriptions = json.descriptions || [];
+  const descMap = new Map<string, any>();
+  descriptions.forEach((d: any) => {
+    descMap.set(`${d.classid}_${d.instanceid || "0"}`, d);
+  });
+  return assets.map((a: any) => {
+    const key = `${a.classid}_${a.instanceid || "0"}`;
+    const d = descMap.get(key) || {};
+    return {
+      assetId: a.assetid,
+      classId: a.classid,
+      name: d.market_name || d.name || "Item",
+      type: d.type,
+      icon: d.icon_url ? `https://steamcommunity-a.akamaihd.net/economy/image/${d.icon_url}` : undefined,
+      tradable: Boolean(d.tradable),
+    };
+  });
+}
+
+async function getGameNews(appId: string) {
+  const keyParam = steamApiKey ? `&key=${steamApiKey}` : "";
+  const url = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${appId}&count=5${keyParam}`;
+  const resp = await fetchWithRetry(url, {}, 2, 300);
+  const json = (await resp.json()) as any;
+  const newsItems = json?.appnews?.newsitems || [];
+  return newsItems.map((item: any) => ({
+    gid: item.gid,
+    title: item.title,
+    url: item.url,
+    author: item.author,
+    date: item.date,
+    contents: item.contents,
+  }));
 }
 
 async function persistPlayerSnapshot(steamId: string, payload: any) {

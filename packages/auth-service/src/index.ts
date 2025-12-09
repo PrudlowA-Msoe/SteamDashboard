@@ -6,6 +6,7 @@ import morgan from "morgan";
 import { nanoid } from "nanoid";
 import client, { collectDefaultMetrics, Registry } from "prom-client";
 import { Pool } from "pg";
+import openid from "openid";
 
 dotenv.config();
 
@@ -14,6 +15,9 @@ const port = process.env.PORT ? Number(process.env.PORT) : 4001;
 const jwtSecret = process.env.JWT_SECRET || "dev-secret-change-me";
 const postgresUrl = process.env.POSTGRES_URL || "postgres://steamapp:steamapp@localhost:5432/steamapp";
 const metricsToken = process.env.METRICS_TOKEN || "prom-secret";
+const baseUrl = process.env.BASE_URL || `http://localhost:${port}`;
+const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4173";
+const steamApiKey = process.env.STEAM_API_KEY;
 
 const metricsRegistry = new Registry();
 collectDefaultMetrics({ register: metricsRegistry, prefix: "auth_service_" });
@@ -38,6 +42,14 @@ interface Profile {
 const profiles = new Map<string, Profile>();
 const pool = new Pool({ connectionString: postgresUrl });
 pool.on("error", (err: Error) => console.error("[postgres] error", err));
+
+const relyingParty = new openid.RelyingParty(
+  `${baseUrl}/steam/callback`,
+  baseUrl,
+  true,
+  false,
+  [],
+);
 
 app.use(cors());
 app.use(express.json());
@@ -135,6 +147,56 @@ app.get("/me/roles", authenticate, (req, res) => {
   res.json({ roles: user.roles });
 });
 
+app.get("/steam/login", (req, res) => {
+  const redirect = req.query.redirect ? String(req.query.redirect) : frontendUrl;
+  const returnTo = `${baseUrl}/steam/callback?redirect=${encodeURIComponent(redirect)}`;
+  relyingParty.authenticate("https://steamcommunity.com/openid", false, (error: any, authUrl: string | null) => {
+    if (error || !authUrl) {
+      return res.status(500).json({ error: "openid_init_failed", message: error?.message });
+    }
+    res.redirect(
+      authUrl
+        .replace("openid.return_to=" + encodeURIComponent(baseUrl + "/steam/callback"), "openid.return_to=" + encodeURIComponent(returnTo))
+        .replace("openid.realm=" + encodeURIComponent(baseUrl), "openid.realm=" + encodeURIComponent(baseUrl)),
+    );
+  });
+});
+
+app.get("/steam/callback", (req, res) => {
+  const redirect = req.query.redirect ? String(req.query.redirect) : frontendUrl;
+  relyingParty.verifyAssertion(req, async (err: any, result?: any) => {
+    try {
+      if (err || !result?.claimedIdentifier) {
+        return res.status(401).send("Steam login failed");
+      }
+      const steamId = result.claimedIdentifier.split("/").pop() || "";
+      const personaName = (await getPersona(steamId)) || `User-${steamId.slice(-6)}`;
+      const id = nanoid();
+      const profile: Profile = { id, steamId, personaName, roles: ["user"] };
+      profiles.set(id, profile);
+      persistProfile(profile).catch((e) => console.error("[postgres] persist profile", e));
+      const token = issueToken(profile);
+      res.send(`
+        <html><body>
+        <script>
+          (function(){
+            if (window.opener) {
+              window.opener.postMessage({ type: "steam-login", token: "${token}" }, "*");
+              window.close();
+            } else {
+              window.location = "${redirect}?token=${token}";
+            }
+          })();
+        </script>
+        </body></html>
+      `);
+    } catch (e) {
+      console.error("steam callback error", e);
+      res.status(500).send("Steam login failed");
+    }
+  });
+});
+
 async function init() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS profiles (
@@ -167,6 +229,19 @@ async function loadProfile(id: string): Promise<Profile | null> {
   const profile: Profile = { id: row.id, steamId: row.steam_id, personaName: row.persona_name, roles: row.roles };
   profiles.set(id, profile);
   return profile;
+}
+
+async function getPersona(steamId: string): Promise<string | null> {
+  if (!steamApiKey) return null;
+  try {
+    const resp = await fetch(
+      `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${steamApiKey}&steamids=${steamId}`,
+    );
+    const json = (await resp.json()) as any;
+    return json?.response?.players?.[0]?.personaname || null;
+  } catch {
+    return null;
+  }
 }
 
 init().catch((err) => {

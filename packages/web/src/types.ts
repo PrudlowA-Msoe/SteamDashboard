@@ -47,5 +47,33 @@ export interface GameSummary {
   publishers: string[];
   developers: string[];
   categories: string[];
-   currentPlayers?: number | null;
+  currentPlayers?: number | null;
+}
+
+export interface Friend {
+  steamId: string;
+  personaName: string;
+  avatar?: string;
+  profileUrl?: string;
+  status: string;
+  lastLogoff?: number;
+  game?: string;
+}
+
+export interface NewsItem {
+  gid: string;
+  title: string;
+  url: string;
+  author?: string;
+  date?: number;
+  contents?: string;
+}
+
+export interface InventoryItem {
+  assetId: string;
+  classId: string;
+  name: string;
+  type?: string;
+  icon?: string;
+  tradable?: boolean;
 }

@@ -52,6 +52,34 @@ app.get("/games", (req, res) => {
   res.json({ count: result.length, items: result });
 });
 
+app.get("/search/live", async (req, res) => {
+  const query = (req.query.q as string | undefined)?.trim();
+  if (!query) {
+    return res.status(400).json({ error: "missing_query" });
+  }
+  try {
+    const searchUrl = `https://store.steampowered.com/api/storesearch?term=${encodeURIComponent(query)}&l=english&cc=US`;
+    const resp = await fetch(searchUrl);
+    if (!resp.ok) {
+      throw new Error(`search failed ${resp.status}`);
+    }
+    const json = (await resp.json()) as any;
+    const mapped =
+      json?.items?.map((item: any) => ({
+        appId: String(item.id),
+        name: item.name,
+        genres: [],
+        developer: "",
+        publisher: "",
+        icon: item.tiny_image || item.header_image || item.capsule || "",
+      })) || [];
+    res.json({ count: mapped.length, items: mapped });
+  } catch (err) {
+    console.error("[metadata-service] search error", err);
+    res.status(500).json({ error: "search_failed", message: (err as Error).message });
+  }
+});
+
 app.get("/search", (req, res) => {
   const query = (req.query.q as string | undefined)?.toLowerCase();
   if (!query) {
@@ -68,6 +96,37 @@ app.get("/games/:appId", (req, res) => {
     return res.status(404).json({ error: "not_found" });
   }
   res.json({ item: game });
+});
+
+app.post("/games/cache", async (req, res) => {
+  const appId = String(req.body?.appId || req.query.appId || "").trim();
+  if (!appId) return res.status(400).json({ error: "missing_app_id" });
+  try {
+    const existing = games.find((g) => g.appId === appId);
+    if (existing) {
+      return res.json({ item: existing, cached: true });
+    }
+    const resp = await fetch(`https://store.steampowered.com/api/appdetails?appids=${appId}`);
+    if (!resp.ok) throw new Error(`appdetails failed ${resp.status}`);
+    const json = (await resp.json()) as any;
+    const entry = json[appId];
+    if (!entry?.success || !entry.data) throw new Error("app not found");
+    const data = entry.data;
+    const newGame: GameMetadata = {
+      appId,
+      name: data.name,
+      genres: (data.genres || []).map((g: any) => g.description),
+      developer: (data.developers || [])[0] || "",
+      publisher: (data.publishers || [])[0] || "",
+      icon: data.header_image,
+      tags: (data.categories || []).map((c: any) => c.description),
+    };
+    games.push(newGame);
+    res.json({ item: newGame, cached: false });
+  } catch (err) {
+    console.error("[metadata-service] cache add error", err);
+    res.status(500).json({ error: "cache_add_failed", message: (err as Error).message });
+  }
 });
 
 function includesQuery(game: GameMetadata, q: string) {
