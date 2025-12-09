@@ -1,0 +1,172 @@
+version: "3.9"
+
+networks:
+  steam-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  grafana-data:
+
+services:
+  api-gateway:
+    build:
+      context: .
+      dockerfile: packages/api-gateway/Dockerfile
+    environment:
+      PORT: 4000
+      METADATA_SERVICE_URL: http://metadata-service:4002
+      AUTH_SERVICE_URL: http://auth-service:4001
+      LIVE_SERVICE_URL: http://live-service:4003
+      STATS_SERVICE_URL: http://game-stats-service:4004
+      JWT_SECRET: dev-secret-change-me
+      METRICS_TOKEN: prom-secret
+    ports:
+      - "4000:4000"
+    depends_on:
+      - auth-service
+      - metadata-service
+      - live-service
+      - game-stats-service
+    networks:
+      - steam-net
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: packages/auth-service/Dockerfile
+    environment:
+      PORT: 4001
+      JWT_SECRET: dev-secret-change-me
+      POSTGRES_URL: postgres://steamapp:steamapp@postgres:5432/steamapp
+      METRICS_TOKEN: prom-secret
+    ports:
+      - "4001:4001"
+    networks:
+      - steam-net
+
+  metadata-service:
+    build:
+      context: .
+      dockerfile: packages/metadata-service/Dockerfile
+    environment:
+      PORT: 4002
+      METRICS_TOKEN: prom-secret
+    ports:
+      - "4002:4002"
+    networks:
+      - steam-net
+
+  game-stats-service:
+    build:
+      context: .
+      dockerfile: packages/game-stats-service/Dockerfile
+    environment:
+      PORT: 4004
+      REDIS_URL: redis://redis:6379
+      POSTGRES_URL: postgres://steamapp:steamapp@postgres:5432/steamapp
+      CACHE_TTL_SECONDS: 3600
+      STEAM_API_KEY: ${STEAM_API_KEY:-}
+      METRICS_TOKEN: prom-secret
+    ports:
+      - "4004:4004"
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - steam-net
+
+  live-service:
+    build:
+      context: .
+      dockerfile: packages/live-service/Dockerfile
+    environment:
+      PORT: 4003
+      METRICS_TOKEN: prom-secret
+    ports:
+      - "4003:4003"
+    networks:
+      - steam-net
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    environment:
+      VITE_API_BASE: http://api-gateway:4000
+    depends_on:
+      - api-gateway
+    ports:
+      - "4173:4173"
+    networks:
+      - steam-net
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: steamapp
+      POSTGRES_PASSWORD: steamapp
+      POSTGRES_DB: steamapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - steam-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - steam-net
+
+  zookeeper:
+    image: bitnami/zookeeper:3.9
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    ports:
+      - "2181:2181"
+    networks:
+      - steam-net
+
+  kafka:
+    image: bitnami/kafka:3.7
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    networks:
+      - steam-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    networks:
+      - steam-net
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./deploy/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - steam-net

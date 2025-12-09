@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]
+  - job_name: "gateway"
+    metrics_path: /metrics
+    bearer_token: prom-secret
+    static_configs:
+      - targets: ["api-gateway:4000"]
+  - job_name: "auth-service"
+    metrics_path: /metrics
+    bearer_token: prom-secret
+    static_configs:
+      - targets: ["auth-service:4001"]
+  - job_name: "metadata-service"
+    metrics_path: /metrics
+    bearer_token: prom-secret
+    static_configs:
+      - targets: ["metadata-service:4002"]
+  - job_name: "live-service"
+    metrics_path: /metrics
+    bearer_token: prom-secret
+    static_configs:
+      - targets: ["live-service:4003"]
+  - job_name: "game-stats-service"
+    metrics_path: /metrics
+    bearer_token: prom-secret
+    static_configs:
+      - targets: ["game-stats-service:4004"]

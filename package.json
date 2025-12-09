@@ -1,0 +1,20 @@
+{
+  "name": "steam-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Steam Live Game Stats Dashboard monorepo",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w api-gateway -w auth-service -w metadata-service -w game-stats-service -w live-service -w web",
+    "test": "npm run test -w game-stats-service",
+    "dev:gateway": "npm run dev -w api-gateway",
+    "dev:auth": "npm run dev -w auth-service",
+    "dev:metadata": "npm run dev -w metadata-service",
+    "dev:stats": "npm run dev -w game-stats-service",
+    "dev:live": "npm run dev -w live-service",
+    "dev:web": "npm run dev -w web",
+    "format": "echo \"add formatter (prettier/eslint)\""
+  }
+}
