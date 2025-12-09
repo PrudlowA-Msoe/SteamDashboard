@@ -1,0 +1,17 @@
+# Replace steam.example.com with your domain
+steam.example.com {
+  encode gzip
+  tls you@example.com
+
+  @frontend {
+    path / /assets* /index.html
+  }
+
+  handle_path /auth/* {
+    reverse_proxy api-gateway:4000
+  }
+
+  handle {
+    reverse_proxy api-gateway:4000
+  }
+}
