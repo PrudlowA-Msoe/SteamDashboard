@@ -145,7 +145,7 @@ app.get("/me/roles", authenticate, (req, res) => {
   res.json({ roles: user.roles });
 });
 
-app.get("/steam/login", (req, res) => {
+const loginHandler = (req: express.Request, res: express.Response) => {
   const redirect = req.query.redirect ? String(req.query.redirect) : frontendUrl;
   const returnTo = `${externalCallback}?redirect=${encodeURIComponent(redirect)}`;
   relyingParty.authenticate("https://steamcommunity.com/openid", false, (error: any, authUrl: string | null) => {
@@ -161,9 +161,11 @@ app.get("/steam/login", (req, res) => {
         .replace("openid.realm=" + encodeURIComponent(publicOrigin), "openid.realm=" + encodeURIComponent(publicOrigin)),
     );
   });
-});
+};
+app.get("/steam/login", loginHandler);
+app.get(`${authPrefix}/steam/login`, loginHandler);
 
-app.get("/steam/callback", (req, res) => {
+const callbackHandler = (req: express.Request, res: express.Response) => {
   const redirect = req.query.redirect ? String(req.query.redirect) : frontendUrl;
   relyingParty.verifyAssertion(req, async (err: any, result?: any) => {
     try {
@@ -196,7 +198,9 @@ app.get("/steam/callback", (req, res) => {
       res.status(500).send("Steam login failed");
     }
   });
-});
+};
+app.get("/steam/callback", callbackHandler);
+app.get(`${authPrefix}/steam/callback`, callbackHandler);
 
 async function init() {
   await pool.query(`

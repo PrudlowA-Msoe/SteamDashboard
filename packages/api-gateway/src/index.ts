@@ -83,7 +83,6 @@ app.use(
   createProxyMiddleware({
     target: authUrl,
     changeOrigin: true,
-    pathRewrite: { "^/auth": "" },
   }),
 );
 
