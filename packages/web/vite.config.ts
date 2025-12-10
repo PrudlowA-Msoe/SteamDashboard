@@ -11,5 +11,9 @@ export default defineConfig({
       "/live": "http://localhost:4000",
       "/stats": "http://localhost:4000"
     }
+  },
+  preview: {
+    // Allow public domain access when running `npm run preview`
+    allowedHosts: ["steamviewdashboard.online", "www.steamviewdashboard.online"]
   }
 });
