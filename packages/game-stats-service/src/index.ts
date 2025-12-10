@@ -372,7 +372,17 @@ function resolveSteamId(req: express.Request, paramId: string) {
 
 async function getFeaturedDotaGames() {
   const url = `${dotaLiveBase}/GetTopLiveGame/v1/?key=${steamApiKey}&partner=0`;
-  const resp = await fetchWithRetry(url, {}, 2, 300);
+  const resp = await fetchWithRetry(url, {}, 2, 300).catch((err) => {
+    console.error("[dota_live] upstream error", err);
+    return null;
+  });
+  if (!resp) return [];
+  if (!resp.ok) {
+    // Steam occasionally 404s this endpoint; return empty instead of throwing
+    if (resp.status === 404) return [];
+    const body = await resp.text();
+    throw new Error(`top live failed ${resp.status} ${body}`);
+  }
   const json = (await resp.json()) as any;
   const games = json?.game_list || [];
 
