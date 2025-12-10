@@ -46,6 +46,13 @@ steamviewdashboard.online, www.steamviewdashboard.online {
       header_up X-Forwarded-Proto {scheme}
     }
   }
+  handle /admin/* {
+    reverse_proxy api-gateway:4000 {
+      header_up Host {host}
+      header_up X-Forwarded-Host {host}
+      header_up X-Forwarded-Proto {scheme}
+    }
+  }
 
   # Everything else goes to the web SPA
   handle {

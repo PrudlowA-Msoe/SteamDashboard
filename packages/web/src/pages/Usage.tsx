@@ -45,6 +45,8 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
     );
   }
 
+  const parsed = useMemo(() => parsePrometheus(metrics), [metrics]);
+
   return (
     <div className="page">
       <div className="panel">
@@ -59,6 +61,23 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
           </button>
         </div>
         {error ? <div className="callout warn">{error}</div> : null}
+        {parsed.length ? (
+          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+            {parsed.slice(0, 30).map((m, i) => (
+              <div className="card" key={`${m.name}-${i}`}>
+                <div className="card-body">
+                  <div className="card-header">
+                    <h3>{m.name}</h3>
+                    <span className="status">{m.value}</span>
+                  </div>
+                  <p className="meta">{m.labels}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty">No parsed metrics yet. You can still view the raw output below.</div>
+        )}
         <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", background: "rgba(0,0,0,0.4)", padding: 12, borderRadius: 12 }}>
           {metrics || "No metrics loaded yet."}
         </pre>
@@ -68,3 +87,19 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
 };
 
 export default UsagePage;
+
+function parsePrometheus(text: string): Array<{ name: string; value: string; labels: string }> {
+  if (!text || text.trim().startsWith("<!doctype")) return [];
+  const lines = text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+  const items: Array<{ name: string; value: string; labels: string }> = [];
+  for (const line of lines) {
+    const [metricPart, valuePart] = line.split(/ (?=[^ ]+$)/);
+    if (!metricPart || valuePart === undefined) continue;
+    const match = metricPart.match(/^([^{]+){?(.*)?}?$/);
+    if (!match) continue;
+    const name = match[1];
+    const labels = match[2] || "";
+    items.push({ name, value: valuePart, labels });
+  }
+  return items;
+}
