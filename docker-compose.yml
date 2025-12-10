@@ -5,6 +5,8 @@ networks:
 volumes:
   pgdata:
   grafana-data:
+  caddy_data:
+  caddy_config:
 
 services:
   api-gateway:
@@ -38,8 +40,8 @@ services:
       JWT_SECRET: dev-secret-change-me
       POSTGRES_URL: postgres://steamapp:steamapp@postgres:5432/steamapp
       METRICS_TOKEN: prom-secret
-      BASE_URL: http://localhost:4001
-      FRONTEND_URL: http://localhost:4173
+      BASE_URL: ${AUTH_BASE_URL:-http://localhost:4001}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4173}
 
     ports:
       - "4001:4001"
@@ -94,7 +96,7 @@ services:
       context: .
       dockerfile: packages/web/Dockerfile
     environment:
-      VITE_API_BASE: http://api-gateway:4000
+      VITE_API_BASE: ${VITE_API_BASE:-http://api-gateway:4000}
     depends_on:
       - api-gateway
     ports:
@@ -170,5 +172,21 @@ services:
       - ./deploy/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
       - ./deploy/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
       - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - steam-net
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api-gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     networks:
       - steam-net

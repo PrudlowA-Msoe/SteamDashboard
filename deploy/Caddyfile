@@ -1,17 +1,30 @@
-# Replace steam.example.com with your domain
-steam.example.com {
-  encode gzip
+# Replace steamviewdashboard.com with your domain and set a real email for TLS
+steamviewdashboard.com, www.steamviewdashboard.com {
+  encode zstd gzip
   tls you@example.com
 
-  @frontend {
-    path / /assets* /index.html
-  }
-
+  # API + auth paths routed to the gateway
   handle_path /auth/* {
     reverse_proxy api-gateway:4000
   }
-
-  handle {
+  handle_path /metadata/* {
     reverse_proxy api-gateway:4000
+  }
+  handle_path /stats/* {
+    reverse_proxy api-gateway:4000
+  }
+  handle_path /players/* {
+    reverse_proxy api-gateway:4000
+  }
+  handle_path /steam/* {
+    reverse_proxy api-gateway:4000
+  }
+  handle_path /live/* {
+    reverse_proxy api-gateway:4000
+  }
+
+  # Everything else goes to the web SPA
+  handle {
+    reverse_proxy web:4173
   }
 }

@@ -9,7 +9,8 @@ import GameDetailsPage from "./pages/GameDetails";
 import LiveDotaPage from "./pages/LiveDota";
 import { decodeToken } from "./utils/token";
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:4000";
+const runtimeOrigin = typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
+const API_BASE = (import.meta.env.VITE_API_BASE as string) || runtimeOrigin || "http://localhost:4000";
 const DEFAULT_TOKEN = (import.meta.env.VITE_AUTH_TOKEN as string) || "";
 const DEMO_ADMIN_USER = "admin";
 const DEMO_ADMIN_PASS = "admin123";
@@ -66,7 +67,7 @@ const App = () => {
 
   const handleSteamLogin = () => {
     const redirect = encodeURIComponent(window.location.origin);
-    const authBase = API_BASE.replace(/\/metadata.*|\/stats.*|\/live.*|\/auth.*/, "");
+    const authBase = API_BASE;
     const url = `${authBase}/auth/steam/login?redirect=${redirect}`;
     window.open(url, "steam-login", "width=700,height=800");
   };
