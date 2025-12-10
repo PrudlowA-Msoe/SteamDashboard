@@ -19,7 +19,7 @@ services:
       AUTH_SERVICE_URL: http://auth-service:4001
       LIVE_SERVICE_URL: http://live-service:4003
       STATS_SERVICE_URL: http://game-stats-service:4004
-      JWT_SECRET: dev-secret-change-me
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       METRICS_TOKEN: prom-secret
     ports:
       - "4000:4000"
@@ -37,7 +37,7 @@ services:
       dockerfile: packages/auth-service/Dockerfile
     environment:
       PORT: 4001
-      JWT_SECRET: dev-secret-change-me
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       POSTGRES_URL: postgres://steamapp:steamapp@postgres:5432/steamapp
       METRICS_TOKEN: prom-secret
       BASE_URL: ${AUTH_BASE_URL:-http://localhost:4001}
