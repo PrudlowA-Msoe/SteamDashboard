@@ -377,7 +377,7 @@ async function getFeaturedDotaGames() {
   const games = json?.game_list || [];
 
   // collect IDs for league/team hydration
-  const leagueIds: number[] = Array.from(new Set(games.map((g: any) => Number(g.league_id)).filter((v) => Number.isFinite(v))));
+  const leagueIds: number[] = Array.from(new Set(games.map((g: any) => Number(g.league_id)).filter((v: number) => Number.isFinite(v))));
   const teamIds: number[] = Array.from(
     new Set(
       games
