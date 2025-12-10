@@ -475,16 +475,21 @@ async function hydrateLeagues(ids: number[]) {
   }
   const missing = ids.filter((id) => !map.has(id));
   if (!missing.length) return new Map([...map]);
-  const url = `${dotaLiveBase}/GetLeagueListing/v1?key=${steamApiKey}&l=english`;
-  const resp = await fetchWithRetry(url, {}, 1, 300);
-  const json = (await resp.json()) as any;
-  const leagues = json?.result?.leagues || [];
-  leagues.forEach((l: any) => {
-    leagueCache.set(l.leagueid, { name: l.name, tier: l.tier, lastUpdated: Date.now() });
-    if (ids.includes(l.leagueid)) {
-      map.set(l.leagueid, { name: l.name, tier: l.tier });
-    }
-  });
+  try {
+    const url = `${dotaLiveBase}/GetLeagueListing/v1?key=${steamApiKey}&l=english`;
+    const resp = await fetchWithRetry(url, {}, 1, 300);
+    if (!resp.ok) throw new Error(`league listing ${resp.status}`);
+    const json = (await resp.json()) as any;
+    const leagues = json?.result?.leagues || [];
+    leagues.forEach((l: any) => {
+      leagueCache.set(l.leagueid, { name: l.name, tier: l.tier, lastUpdated: Date.now() });
+      if (ids.includes(l.leagueid)) {
+        map.set(l.leagueid, { name: l.name, tier: l.tier });
+      }
+    });
+  } catch (err) {
+    console.error("[dota_live] league hydrate failed", err);
+  }
   return map;
 }
 
@@ -502,9 +507,10 @@ async function hydrateTeams(ids: number[]) {
     }
   }
   for (const id of missing) {
-    const url = `${dotaLiveBase}/GetTeamInfoByTeamID/v1?key=${steamApiKey}&team_id=${id}&teams_requested=1`;
     try {
+      const url = `${dotaLiveBase}/GetTeamInfoByTeamID/v1?key=${steamApiKey}&team_id=${id}&teams_requested=1`;
       const resp = await fetchWithRetry(url, {}, 1, 300);
+      if (!resp.ok) throw new Error(`team info ${resp.status}`);
       const json = (await resp.json()) as any;
       const entry = json?.result?.teams?.[0];
       if (entry) {
