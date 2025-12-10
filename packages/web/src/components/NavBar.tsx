@@ -18,9 +18,6 @@ const NavBar = ({ onLogout }: Props) => {
         </div>
       </div>
       <div className="nav-links">
-        <Link className={isActive("/")} to="/">
-          Home
-        </Link>
         <Link className={isActive("/discover")} to="/discover">
           Discover
         </Link>

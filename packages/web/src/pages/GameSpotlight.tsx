@@ -188,7 +188,7 @@ const GamePicker = ({
               onClick={() => onSelect(String(g.appid))}
               aria-pressed={String(g.appid) === selectedAppId}
             >
-              {icon ? <img src={icon} alt={g.name} /> : <div className="placeholder" style={{ height: 120 }} />}
+          {icon ? <img src={icon} alt={g.name} /> : <div className="placeholder" style={{ height: 120 }} />}
               <div className="card-body">
                 <div className="card-header">
                   <h3>{g.name}</h3>
