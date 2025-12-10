@@ -78,14 +78,18 @@ app.use(
   }),
 );
 
-app.use(
-  "/auth",
-  createProxyMiddleware({
-    target: authUrl,
-    changeOrigin: false, // preserve original host for OpenID return_to/realm validation
-    xfwd: true,
-  }),
-);
+const authProxy = createProxyMiddleware({
+  target: authUrl,
+  changeOrigin: false, // preserve original host for OpenID return_to/realm validation
+  xfwd: true,
+});
+
+app.use((req, res, next) => {
+  if (req.url.startsWith("/auth/")) {
+    return authProxy(req, res, next);
+  }
+  return next();
+});
 
 app.use(
   "/live",
