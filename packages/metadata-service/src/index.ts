@@ -89,6 +89,37 @@ app.get("/search", (req, res) => {
   res.json({ count: matches.length, items: matches });
 });
 
+app.get("/featured/free", async (req, res) => {
+  const limit = Number(req.query.limit || 12);
+  const shouldCache = req.query.cache !== "false";
+  try {
+    const data = await fetchFeaturedCategories();
+    const items = (data?.topfree?.items || []).slice(0, limit);
+    const mapped = items.map(mapFeaturedItem);
+    const cached = shouldCache ? addToCache(mapped) : 0;
+    res.json({ count: mapped.length, cached, items: mapped });
+  } catch (err) {
+    console.error("[metadata-service] featured/free error", err);
+    res.status(500).json({ error: "featured_free_failed", message: (err as Error).message });
+  }
+});
+
+app.get("/featured/discounts", async (req, res) => {
+  const limit = Number(req.query.limit || 12);
+  const shouldCache = req.query.cache !== "false";
+  try {
+    const data = await fetchFeaturedCategories();
+    const specials = (data?.specials?.items || []).filter((item: any) => Number(item.discount_percent) > 0);
+    const items = specials.slice(0, limit);
+    const mapped = items.map(mapFeaturedItem);
+    const cached = shouldCache ? addToCache(mapped) : 0;
+    res.json({ count: mapped.length, cached, items: mapped });
+  } catch (err) {
+    console.error("[metadata-service] featured/discounts error", err);
+    res.status(500).json({ error: "featured_discounts_failed", message: (err as Error).message });
+  }
+});
+
 app.get("/games/:appId", (req, res) => {
   const appId = req.params.appId;
   const game = games.find((g) => g.appId === appId);
@@ -138,6 +169,40 @@ function includesQuery(game: GameMetadata, q: string) {
     game.genres.some((g) => g.toLowerCase().includes(lower)) ||
     (game.tags || []).some((t) => t.toLowerCase().includes(lower))
   );
+}
+
+async function fetchFeaturedCategories(): Promise<any> {
+  const url = "https://store.steampowered.com/api/featuredcategories?l=english&cc=US";
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(`featuredcategories failed ${resp.status}`);
+  }
+  return (await resp.json()) as any;
+}
+
+function mapFeaturedItem(item: any): GameMetadata {
+  return {
+    appId: String(item.id || item.appid || item.appId),
+    name: item.name || "Unknown",
+    genres: [],
+    developer: "",
+    publisher: "",
+    icon: item.header_image || item.large_capsule_image || item.tiny_image || item.capsule || "",
+    tags: item.discount_percent ? [`-${item.discount_percent}%`] : [],
+  };
+}
+
+function addToCache(items: GameMetadata[]): number {
+  let added = 0;
+  for (const item of items) {
+    if (!item.appId) continue;
+    const exists = games.find((g) => g.appId === item.appId);
+    if (!exists) {
+      games.push(item);
+      added++;
+    }
+  }
+  return added;
 }
 
 app.listen(port, () => {
