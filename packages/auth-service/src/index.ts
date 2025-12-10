@@ -11,6 +11,9 @@ import openid from "openid";
 dotenv.config();
 
 const app = express();
+// Required when running behind reverse proxies (Caddy/API gateway) so the library
+// can see the original protocol/host for OpenID validation.
+app.set("trust proxy", true);
 const port = process.env.PORT ? Number(process.env.PORT) : 4001;
 const jwtSecret = process.env.JWT_SECRET || "dev-secret-change-me";
 const postgresUrl = process.env.POSTGRES_URL || "postgres://steamapp:steamapp@localhost:5432/steamapp";
