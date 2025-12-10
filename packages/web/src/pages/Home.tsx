@@ -58,7 +58,7 @@ const HomePage = ({ token, apiBase }: Props) => {
     const load = async () => {
       setSpotlight({ game: pickSpotlight, loading: true });
       try {
-        const res = await fetch(new URL(`/stats/games/${pickSpotlight.appid}/summary`, apiBase).toString(), {
+        const res = await fetch(new URL(`/stats/games/${pickSpotlight.appId}/summary`, apiBase).toString(), {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
@@ -146,16 +146,16 @@ const HomePage = ({ token, apiBase }: Props) => {
         <div className="grid">
           {loading && <div className="empty">Loading cached games...</div>}
           {!loading && games.length === 0 && <div className="empty">No cached games yet.</div>}
-          {games.slice(0, 6).map((g) => (
+            {games.slice(0, 6).map((g) => (
             <div className="card" key={g.appid}>
               <div className="card-body">
                 <div className="card-header">
                   <h3>{g.name}</h3>
-                  <span className="app-id">App {g.appid}</span>
+                  <span className="app-id">App {g.appId}</span>
                 </div>
                 <p className="meta">{g.genres?.slice(0, 3).join(", ") || "Game"}</p>
                 <div className="quick-actions">
-                  <Link to={`/games/${g.appid}`}>
+                  <Link to={`/games/${g.appId}`}>
                     <button className="ghost">Details</button>
                   </Link>
                   <Link to="/news">
