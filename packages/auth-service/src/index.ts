@@ -15,8 +15,12 @@ const port = process.env.PORT ? Number(process.env.PORT) : 4001;
 const jwtSecret = process.env.JWT_SECRET || "dev-secret-change-me";
 const postgresUrl = process.env.POSTGRES_URL || "postgres://steamapp:steamapp@localhost:5432/steamapp";
 const metricsToken = process.env.METRICS_TOKEN || "prom-secret";
-const baseUrl = process.env.BASE_URL || `http://localhost:${port}`;
+// Public-facing origin (no trailing slash). Use FRONTEND_URL without path as a default.
 const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4173";
+const publicOrigin = (process.env.PUBLIC_ORIGIN || frontendUrl).replace(/\/+$/, "");
+// External auth mount path (as seen by the browser/gateway), default "/auth"
+const authPrefix = process.env.AUTH_PREFIX || "/auth";
+const externalCallback = `${publicOrigin}${authPrefix}/steam/callback`;
 const steamApiKey = process.env.STEAM_API_KEY;
 
 const metricsRegistry = new Registry();
@@ -43,13 +47,7 @@ const profiles = new Map<string, Profile>();
 const pool = new Pool({ connectionString: postgresUrl });
 pool.on("error", (err: Error) => console.error("[postgres] error", err));
 
-const relyingParty = new openid.RelyingParty(
-  `${baseUrl}/steam/callback`,
-  baseUrl,
-  true,
-  false,
-  [],
-);
+const relyingParty = new openid.RelyingParty(externalCallback, publicOrigin, true, false, []);
 
 app.use(cors());
 app.use(express.json());
@@ -149,15 +147,18 @@ app.get("/me/roles", authenticate, (req, res) => {
 
 app.get("/steam/login", (req, res) => {
   const redirect = req.query.redirect ? String(req.query.redirect) : frontendUrl;
-  const returnTo = `${baseUrl}/steam/callback?redirect=${encodeURIComponent(redirect)}`;
+  const returnTo = `${externalCallback}?redirect=${encodeURIComponent(redirect)}`;
   relyingParty.authenticate("https://steamcommunity.com/openid", false, (error: any, authUrl: string | null) => {
     if (error || !authUrl) {
       return res.status(500).json({ error: "openid_init_failed", message: error?.message });
     }
     res.redirect(
       authUrl
-        .replace("openid.return_to=" + encodeURIComponent(baseUrl + "/steam/callback"), "openid.return_to=" + encodeURIComponent(returnTo))
-        .replace("openid.realm=" + encodeURIComponent(baseUrl), "openid.realm=" + encodeURIComponent(baseUrl)),
+        .replace(
+          "openid.return_to=" + encodeURIComponent(externalCallback),
+          "openid.return_to=" + encodeURIComponent(returnTo),
+        )
+        .replace("openid.realm=" + encodeURIComponent(publicOrigin), "openid.realm=" + encodeURIComponent(publicOrigin)),
     );
   });
 });
