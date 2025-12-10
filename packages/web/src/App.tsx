@@ -7,6 +7,7 @@ import ProfilePage from "./pages/Profile";
 import NewsPage from "./pages/News";
 import GameDetailsPage from "./pages/GameDetails";
 import LiveDotaPage from "./pages/LiveDota";
+import HomePage from "./pages/Home";
 import { decodeToken } from "./utils/token";
 
 const runtimeOrigin = typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
@@ -115,6 +116,7 @@ const App = () => {
         <NavBar onLogout={handleLogout} />
         <Routes>
           <Route path="/" element={<Navigate to="/discover" />} />
+          <Route path="/" element={<HomePage token={token} apiBase={API_BASE} />} />
           <Route path="/discover" element={<DiscoverPage token={token} apiBase={API_BASE} />} />
           <Route path="/live-search" element={<LiveSearchPage token={token} apiBase={API_BASE} />} />
           <Route path="/dota-live" element={<LiveDotaPage token={token} apiBase={API_BASE} />} />
