@@ -1,7 +1,7 @@
-# Replace steamviewdashboard.com with your domain and set a real email for TLS
-steamviewdashboard.com, www.steamviewdashboard.com {
+# Replace steamviewdashboard.online with your domain and set a real email for TLS
+steamviewdashboard.online, www.steamviewdashboard.online {
   encode zstd gzip
-  tls you@example.com
+  tls andrewprudlow@gmail.com
 
   # API + auth paths routed to the gateway
   handle_path /auth/* {

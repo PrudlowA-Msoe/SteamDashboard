@@ -1,7 +1,7 @@
 ## DigitalOcean deployment guide (HTTPS + Steam OpenID)
 
 ### Prereqs
-- A domain pointing to your droplet (e.g., `steam.example.com`).
+- A domain pointing to your droplet (e.g., `steamviewdashboard.online`).
 - Steam API key.
 - JWT secret.
 - Latest docker / docker compose plugin on the droplet.
@@ -21,16 +21,16 @@ METRICS_TOKEN=prom-secret
 POSTGRES_USER=steamapp
 POSTGRES_PASSWORD=steamapp
 POSTGRES_DB=steamapp
-BASE_URL=https://steam.example.com/auth
-FRONTEND_URL=https://steam.example.com
+BASE_URL=https://steamviewdashboard.online/auth
+FRONTEND_URL=https://steamviewdashboard.online
 ```
 
 ### 3) Configure Caddy for HTTPS
-Edit `deploy/Caddyfile`, replace `steam.example.com` and email:
+Edit `deploy/Caddyfile`, replace `steamviewdashboard.online` and email (already set to andrewprudlow@gmail.com):
 ```caddy
-steam.example.com {
-  encode gzip
-  tls you@example.com
+steamviewdashboard.online, www.steamviewdashboard.online {
+  encode zstd gzip
+  tls andrewprudlow@gmail.com
   @frontend {
     path / /assets* /index.html
   }
@@ -61,8 +61,8 @@ docker compose up --build -d
 ```
 
 ### 6) Verify
-- Open `https://steam.example.com` → app loads.
-- Steam login popup redirects to `https://steam.example.com/auth/steam/callback` and succeeds (OpenID).
+- Open `https://steamviewdashboard.online` and confirm the app loads.
+- Steam login popup redirects to `https://steamviewdashboard.online/auth/steam/callback` and succeeds (OpenID).
 - Gateway/API reachable only through HTTPS via Caddy.
 
 ### 7) Optional hardening
