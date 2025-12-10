@@ -50,7 +50,7 @@ const profiles = new Map<string, Profile>();
 const pool = new Pool({ connectionString: postgresUrl });
 pool.on("error", (err: Error) => console.error("[postgres] error", err));
 
-const relyingParty = new openid.RelyingParty(externalCallback, publicOrigin, true, false, []);
+const createRelyingParty = (returnTo: string) => new openid.RelyingParty(returnTo, publicOrigin, true, false, []);
 
 app.use(cors());
 app.use(express.json());
@@ -151,7 +151,8 @@ app.get("/me/roles", authenticate, (req, res) => {
 const loginHandler = (req: express.Request, res: express.Response) => {
   const redirect = req.query.redirect ? String(req.query.redirect) : frontendUrl;
   const returnTo = `${externalCallback}?redirect=${encodeURIComponent(redirect)}`;
-  relyingParty.authenticate("https://steamcommunity.com/openid", false, (error: any, authUrl: string | null) => {
+  const rp = createRelyingParty(returnTo);
+  rp.authenticate("https://steamcommunity.com/openid", false, (error: any, authUrl: string | null) => {
     if (error || !authUrl) {
       return res.status(500).json({ error: "openid_init_failed", message: error?.message });
     }
@@ -170,7 +171,9 @@ app.get(`${authPrefix}/steam/login`, loginHandler);
 
 const callbackHandler = (req: express.Request, res: express.Response) => {
   const redirect = req.query.redirect ? String(req.query.redirect) : frontendUrl;
-  relyingParty.verifyAssertion(req, async (err: any, result?: any) => {
+  const returnTo = `${externalCallback}?redirect=${encodeURIComponent(redirect)}`;
+  const rp = createRelyingParty(returnTo);
+  rp.verifyAssertion(req, async (err: any, result?: any) => {
     try {
       if (err || !result?.claimedIdentifier) {
         console.error("steam verify failed", {
