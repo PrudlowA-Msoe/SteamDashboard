@@ -11,15 +11,28 @@ export const options = {
   },
 };
 
-const BASE = __ENV.BASE || "https://steamviewdashboard.online";
-const TOKEN = __ENV.JWT || "";
+const BASE = (__ENV.BASE || "https://steamviewdashboard.online").replace(/\/$/, "");
+const RAW_TOKEN = __ENV.JWT || "";
+const AUTH_HEADER = RAW_TOKEN
+  ? RAW_TOKEN.startsWith("Bearer ")
+    ? RAW_TOKEN
+    : `Bearer ${RAW_TOKEN}`
+  : "";
+
+const params = AUTH_HEADER ? { headers: { Authorization: AUTH_HEADER } } : {};
 
 export default function () {
-  const params = TOKEN ? { headers: { Authorization: `Bearer ${TOKEN}` } } : {};
-
+  // Spotlight owned library (requires JWT)
   http.get(`${BASE}/stats/spotlight/owned`, params);
+
+  // Spotlight for a specific app (uses a common title for caching benefits)
+  http.get(`${BASE}/stats/spotlight/632360`, params); // Risk of Rain 2 (example)
+
+  // Live Dota featured match (public)
+  http.get(`${BASE}/stats/live/dota/featured`, params);
+
+  // Metadata/games for search cache (public)
   http.get(`${BASE}/metadata/games`, params);
-  http.get(`${BASE}/stats/games/570/summary`, params); // example appId (Dota 2)
 
   sleep(1);
 }
