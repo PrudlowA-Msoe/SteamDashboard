@@ -82,7 +82,8 @@ app.use(
   "/auth",
   createProxyMiddleware({
     target: authUrl,
-    changeOrigin: true,
+    changeOrigin: false, // preserve original host for OpenID return_to/realm validation
+    xfwd: true,
   }),
 );
 
