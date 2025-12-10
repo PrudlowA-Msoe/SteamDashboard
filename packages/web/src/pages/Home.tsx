@@ -120,7 +120,7 @@ const HomePage = ({ token, apiBase }: Props) => {
           <div className="quick-actions">
             {spotlight.game && (
               <>
-                <Link to={`/games/${spotlight.game.appid}`}>
+                <Link to={`/games/${spotlight.game.appId}`}>
                   <button className="ghost">View details</button>
                 </Link>
                 <Link to="/news">
@@ -146,8 +146,8 @@ const HomePage = ({ token, apiBase }: Props) => {
         <div className="grid">
           {loading && <div className="empty">Loading cached games...</div>}
           {!loading && games.length === 0 && <div className="empty">No cached games yet.</div>}
-            {games.slice(0, 6).map((g) => (
-            <div className="card" key={g.appid}>
+          {games.slice(0, 6).map((g) => (
+            <div className="card" key={g.appId}>
               <div className="card-body">
                 <div className="card-header">
                   <h3>{g.name}</h3>
