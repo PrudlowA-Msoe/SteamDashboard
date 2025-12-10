@@ -1,4 +1,4 @@
-import cors from "cors";
+﻿import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import morgan from "morgan";
@@ -29,6 +29,8 @@ const jwtSecret = process.env.JWT_SECRET || "dev-secret-change-me";
 const dotaLiveBase = "https://api.steampowered.com/IDOTA2Match_570";
 const leagueCache: Map<number, { name: string; tier?: string; lastUpdated: number }> = new Map();
 const teamCache: Map<number, { name: string; logo?: string; lastUpdated: number }> = new Map();
+const achievementSchemaCacheTtlSeconds = 24 * 60 * 60;
+const spotlightCacheTtlSeconds = 60;
 
 const redis = createRedisClient({ url: redisUrl });
 redis.on("error", (err: Error) => console.error("[redis] error", err));
@@ -164,6 +166,45 @@ app.get("/live/dota/featured", async (_req, res) => {
   }
 });
 
+app.get("/spotlight/owned", async (req, res) => {
+  const steamId = resolveSteamId(req, "me");
+  if (!steamId) return res.status(401).json({ error: "unauthorized" });
+  try {
+    const [owned, recent] = await Promise.all([fetchOwnedGames(steamId), fetchRecentlyPlayed(steamId)]);
+    // sort recent by playtime_2weeks desc
+    const recentSorted = [...recent].sort((a, b) => (b.playtime_2weeks || 0) - (a.playtime_2weeks || 0));
+    const ownedSorted = [...owned].sort((a, b) => (b.playtime_forever || 0) - (a.playtime_forever || 0));
+    res.json({
+      recent: recentSorted,
+      owned: ownedSorted,
+    });
+  } catch (err) {
+    console.error("[spotlight] owned error", err);
+    res.status(500).json({ error: "failed_to_fetch_owned", message: (err as Error).message });
+  }
+});
+
+app.get("/spotlight/:appId", async (req, res) => {
+  const steamId = resolveSteamId(req, "me");
+  if (!steamId) return res.status(401).json({ error: "unauthorized" });
+  if (!steamApiKey) return res.status(500).json({ error: "missing_api_key" });
+  const appId = String(req.params.appId);
+  const cacheKey = `spotlight:${steamId}:${appId}`;
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    cacheHits.inc({ resource: "spotlight" });
+    return res.json(JSON.parse(cached));
+  }
+  try {
+    const spotlight = await buildSpotlightPayload(steamId, appId);
+    await redis.set(cacheKey, JSON.stringify(spotlight), { EX: spotlightCacheTtlSeconds });
+    res.json(spotlight);
+  } catch (err) {
+    console.error("[spotlight] failed", err);
+    res.status(500).json({ error: "spotlight_failed", message: (err as Error).message });
+  }
+});
+
 async function init() {
   await redis.connect();
   await pool.query(`
@@ -179,6 +220,14 @@ async function init() {
       app_id TEXT PRIMARY KEY,
       payload JSONB NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS player_count_snapshots (
+      app_id TEXT NOT NULL,
+      ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+      player_count INTEGER,
+      PRIMARY KEY (app_id, ts)
     );
   `);
   app.listen(port, () => {
@@ -545,6 +594,156 @@ function statusText(state: number) {
   }
 }
 
+type SpotlightPayload = {
+  appId: string;
+  gameName: string;
+  iconUrl?: string;
+  headerImage?: string;
+  playtimeForeverMinutes?: number;
+  playtime2WeeksMinutes?: number;
+  lastPlayedTimestamp?: number;
+  achievements?: {
+    total: number;
+    unlocked: number;
+    completionPct: number;
+    list: any[];
+    error?: string | null;
+  };
+  currentPlayers?: number | null;
+  currentPlayersError?: string | null;
+  news?: { gid: string; title: string; url: string; author?: string; date?: number; contents?: string }[];
+  newsError?: string | null;
+  trend?: { timestamp: number; playerCount: number | null }[];
+};
+
+async function buildSpotlightPayload(steamId: string, appId: string): Promise<SpotlightPayload> {
+  const [owned, recent] = await Promise.all([fetchOwnedGames(steamId), fetchRecentlyPlayed(steamId)]);
+  const libraryEntry = owned.find((g) => String(g.appid) === appId) || recent.find((g) => String(g.appid) === appId);
+
+  const base: SpotlightPayload = {
+    appId,
+    gameName: libraryEntry?.name || `App ${appId}`,
+    iconUrl: libraryEntry?.img_icon_url ? `https://media.steampowered.com/steamcommunity/public/images/apps/${appId}/${libraryEntry.img_icon_url}.jpg` : undefined,
+    playtimeForeverMinutes: libraryEntry?.playtime_forever,
+    playtime2WeeksMinutes: libraryEntry?.playtime_2weeks,
+    lastPlayedTimestamp: libraryEntry?.rtime_last_played,
+  };
+
+  const achievementsPromise = fetchAchievements(steamId, appId);
+  const currentPlayersPromise = getCurrentPlayers(appId);
+  const newsPromise = fetchNews(appId);
+  const trendPromise = getPlayerCountTrend(appId, 30);
+
+  const [achievements, currentPlayers, news, trend] = await Promise.all([
+    achievementsPromise.catch((e) => ({ error: (e as Error).message, list: [], total: 0, unlocked: 0, completionPct: 0 })),
+    currentPlayersPromise,
+    newsPromise.catch((e) => ({ error: (e as Error).message, items: [] as any[] })),
+    trendPromise,
+  ]);
+
+  // record snapshot lazily if older than 6h
+  if (currentPlayers !== null) {
+    await maybeRecordPlayerSnapshot(appId, currentPlayers, 6);
+  }
+
+  return {
+    ...base,
+    achievements,
+    currentPlayers,
+    currentPlayersError: null,
+    news: Array.isArray((news as any).items) ? (news as any).items : [],
+    newsError: (news as any).error || null,
+    trend,
+  };
+}
+
+async function fetchAchievements(steamId: string, appId: string) {
+  // player achievements
+  let playerAchievements: any[] = [];
+  try {
+    const url = `https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/?key=${steamApiKey}&steamid=${steamId}&appid=${appId}`;
+    const resp = await fetchWithRetry(url, {}, 2, 300);
+    const json = (await resp.json()) as any;
+    playerAchievements = json?.playerstats?.achievements || [];
+  } catch (err) {
+    console.warn("[spotlight] achievements private/unavailable", err);
+  }
+
+  // schema (cached)
+  const schemaKey = `ach:schema:${appId}`;
+  const cachedSchema = await redis.get(schemaKey);
+  let schema: any[] | null = null;
+  if (cachedSchema) {
+    cacheHits.inc({ resource: "ach_schema" });
+    schema = JSON.parse(cachedSchema);
+  } else {
+    try {
+      const url = `https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?key=${steamApiKey}&appid=${appId}&l=english`;
+      const resp = await fetchWithRetry(url, {}, 1, 300);
+      const json = (await resp.json()) as any;
+      schema = json?.game?.availableGameStats?.achievements || [];
+      if (schema) {
+        await redis.set(schemaKey, JSON.stringify(schema), { EX: achievementSchemaCacheTtlSeconds });
+      }
+    } catch (err) {
+      console.warn("[spotlight] schema fetch failed", err);
+    }
+  }
+
+  const map = new Map<string, any>();
+  (schema || []).forEach((s) => map.set(s.name, s));
+  const list = playerAchievements.map((a) => {
+    const meta = map.get(a.apiname) || {};
+    return {
+      apiName: a.apiname,
+      displayName: meta.displayName || a.apiname,
+      description: meta.description || "",
+      icon: meta.icon,
+      icongray: meta.icongray,
+      achieved: a.achieved === 1,
+      unlockTime: a.unlocktime || 0,
+    };
+  });
+
+  const total = list.length || (schema ? schema.length : 0);
+  const unlocked = list.filter((a) => a.achieved).length;
+  const completionPct = total ? Math.round((unlocked / total) * 100) : 0;
+
+  return { total, unlocked, completionPct, list, error: null };
+}
+
+async function fetchNews(appId: string) {
+  const url = `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${appId}&count=5&maxlength=400&format=json`;
+  const resp = await fetchWithRetry(url, {}, 1, 300);
+  if (!resp.ok) throw new Error(`news failed ${resp.status}`);
+  const json = (await resp.json()) as any;
+  const items =
+    json?.appnews?.newsitems?.map((n: any) => ({
+      gid: n.gid,
+      title: n.title,
+      url: n.url,
+      author: n.author,
+      date: n.date,
+      contents: n.contents,
+    })) || [];
+  return { items };
+}
+
+async function maybeRecordPlayerSnapshot(appId: string, count: number, minHours: number) {
+  const { rows } = await pool.query(`SELECT ts FROM player_count_snapshots WHERE app_id = $1 ORDER BY ts DESC LIMIT 1`, [appId]);
+  const last = rows[0]?.ts ? new Date(rows[0].ts).getTime() : 0;
+  if (Date.now() - last < minHours * 60 * 60 * 1000) return;
+  await pool.query(`INSERT INTO player_count_snapshots (app_id, ts, player_count) VALUES ($1, now(), $2)`, [appId, count]);
+}
+
+async function getPlayerCountTrend(appId: string, days: number) {
+  const { rows } = await pool.query(
+    `SELECT ts, player_count FROM player_count_snapshots WHERE app_id = $1 AND ts > now() - ($2 || ' days')::interval ORDER BY ts`,
+    [appId, days],
+  );
+  return rows.map((r: any) => ({ timestamp: new Date(r.ts).getTime(), playerCount: r.player_count }));
+}
+
 async function getInventory(steamId: string, appId: string, contextId: string) {
   const url = `https://steamcommunity.com/inventory/${steamId}/${appId}/${contextId}?l=english&count=200`;
   const resp = await fetchWithRetry(url, {}, 2, 300);
@@ -600,3 +799,6 @@ init().catch((err) => {
   console.error("failed to init game-stats-service", err);
   process.exit(1);
 });
+
+
+

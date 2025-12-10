@@ -337,6 +337,11 @@ input:focus {
   box-shadow: var(--shadow);
 }
 
+.card.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.35);
+}
+
 .card img {
   width: 100%;
   height: 150px;

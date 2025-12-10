@@ -8,6 +8,38 @@ export interface GameMetadata {
   tags?: string[];
 }
 
+export interface SpotlightAchievement {
+  apiName: string;
+  displayName: string;
+  description?: string;
+  icon?: string;
+  icongray?: string;
+  achieved: boolean;
+  unlockTime?: number;
+}
+
+export interface SpotlightPayload {
+  appId: string;
+  gameName: string;
+  iconUrl?: string;
+  headerImage?: string;
+  playtimeForeverMinutes?: number;
+  playtime2WeeksMinutes?: number;
+  lastPlayedTimestamp?: number;
+  achievements?: {
+    total: number;
+    unlocked: number;
+    completionPct: number;
+    list: SpotlightAchievement[];
+    error?: string | null;
+  };
+  currentPlayers?: number | null;
+  currentPlayersError?: string | null;
+  news?: { gid: string; title: string; url: string; author?: string; date?: number; contents?: string }[];
+  newsError?: string | null;
+  trend?: { timestamp: number; playerCount: number | null }[];
+}
+
 export interface PlayerStats {
   profile: {
     steamid: string;

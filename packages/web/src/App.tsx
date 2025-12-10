@@ -9,6 +9,7 @@ import GameDetailsPage from "./pages/GameDetails";
 import LiveDotaPage from "./pages/LiveDota";
 import HomePage from "./pages/Home";
 import FeaturedPage from "./pages/Featured";
+import GameSpotlightPage from "./pages/GameSpotlight";
 import { decodeToken } from "./utils/token";
 
 const runtimeOrigin = typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
@@ -122,6 +123,7 @@ const App = () => {
           <Route path="/live-search" element={<LiveSearchPage token={token} apiBase={API_BASE} />} />
           <Route path="/dota-live" element={<LiveDotaPage token={token} apiBase={API_BASE} />} />
           <Route path="/featured" element={<FeaturedPage token={token} apiBase={API_BASE} />} />
+          <Route path="/spotlight" element={<GameSpotlightPage token={token} apiBase={API_BASE} />} />
           <Route path="/players" element={<ProfilePage token={token} apiBase={API_BASE} steamId={steamId} personaName={personaName} />} />
           <Route path="/profile" element={<ProfilePage token={token} apiBase={API_BASE} steamId={steamId} personaName={personaName} />} />
           <Route path="/news" element={<NewsPage token={token} apiBase={API_BASE} />} />
