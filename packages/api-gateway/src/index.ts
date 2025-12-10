@@ -45,7 +45,7 @@ app.get("/metrics", async (req, res) => {
   res.end(await metricsRegistry.metrics());
 });
 
-app.get("/admin/usage", async (req, res) => {
+async function serveUsageMetrics(req: express.Request, res: express.Response) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "unauthorized" });
@@ -60,6 +60,11 @@ app.get("/admin/usage", async (req, res) => {
   } catch {
     return res.status(401).json({ error: "unauthorized" });
   }
+}
+
+app.get("/admin/usage", serveUsageMetrics);
+// Alternate path routed via /stats/* proxy to avoid frontend/caddy routing issues
+app.get("/stats/admin/usage", serveUsageMetrics);
 });
 
 app.use((req, res, next) => {

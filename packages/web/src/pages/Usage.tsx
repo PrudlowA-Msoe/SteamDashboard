@@ -19,7 +19,8 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
     setError(null);
     setHtmlWarning(false);
     try {
-      const url = new URL("/admin/usage", apiBase).toString();
+      // Try stats-scoped path to ensure it goes through gateway proxy
+      const url = new URL("/stats/admin/usage", apiBase).toString();
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
