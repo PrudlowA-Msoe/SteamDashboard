@@ -377,13 +377,14 @@ async function getFeaturedDotaGames() {
   const games = json?.game_list || [];
 
   // collect IDs for league/team hydration
-  const leagueIds = Array.from(new Set(games.map((g: any) => g.league_id).filter(Boolean)));
-  const teamIds = Array.from(
+  const leagueIds: number[] = Array.from(new Set(games.map((g: any) => Number(g.league_id)).filter((v) => Number.isFinite(v))));
+  const teamIds: number[] = Array.from(
     new Set(
       games
         .map((g: any) => [g.radiant_team_id, g.dire_team_id])
         .flat()
-        .filter((id: any) => id !== undefined && id !== null),
+        .map((id: any) => Number(id))
+        .filter((id: number) => Number.isFinite(id)),
     ),
   );
 
