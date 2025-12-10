@@ -5,26 +5,54 @@ steamviewdashboard.online, www.steamviewdashboard.online {
 
   # API + auth paths routed to the gateway
   handle /auth/* {
-    reverse_proxy api-gateway:4000
+    reverse_proxy api-gateway:4000 {
+      header_up Host {host}
+      header_up X-Forwarded-Host {host}
+      header_up X-Forwarded-Proto {scheme}
+    }
   }
   handle /metadata/* {
-    reverse_proxy api-gateway:4000
+    reverse_proxy api-gateway:4000 {
+      header_up Host {host}
+      header_up X-Forwarded-Host {host}
+      header_up X-Forwarded-Proto {scheme}
+    }
   }
   handle /stats/* {
-    reverse_proxy api-gateway:4000
+    reverse_proxy api-gateway:4000 {
+      header_up Host {host}
+      header_up X-Forwarded-Host {host}
+      header_up X-Forwarded-Proto {scheme}
+    }
   }
   handle /players/* {
-    reverse_proxy api-gateway:4000
+    reverse_proxy api-gateway:4000 {
+      header_up Host {host}
+      header_up X-Forwarded-Host {host}
+      header_up X-Forwarded-Proto {scheme}
+    }
   }
   handle /steam/* {
-    reverse_proxy api-gateway:4000
+    reverse_proxy api-gateway:4000 {
+      header_up Host {host}
+      header_up X-Forwarded-Host {host}
+      header_up X-Forwarded-Proto {scheme}
+    }
   }
   handle /live/* {
-    reverse_proxy api-gateway:4000
+    reverse_proxy api-gateway:4000 {
+      header_up Host {host}
+      header_up X-Forwarded-Host {host}
+      header_up X-Forwarded-Proto {scheme}
+    }
   }
 
   # Everything else goes to the web SPA
   handle {
-    reverse_proxy web:4173
+    reverse_proxy web:4173 {
+      header_up Host {host}
+      header_up X-Forwarded-Host {host}
+      header_up X-Forwarded-Proto {scheme}
+    }
   }
 }
