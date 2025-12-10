@@ -14,7 +14,7 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
 
   const grafanaUrl =
     typeof window !== "undefined"
-      ? `${window.location.protocol}//${window.location.hostname}:3000/d/usage-overview`
+      ? `${window.location.origin}/grafana/d/usage-overview`
       : "http://localhost:3000/d/usage-overview";
 
   const isAdmin = roles.includes("admin");
