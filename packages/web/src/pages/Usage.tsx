@@ -12,6 +12,11 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
   const [loading, setLoading] = useState(false);
   const [htmlWarning, setHtmlWarning] = useState(false);
 
+  const grafanaUrl =
+    typeof window !== "undefined"
+      ? `${window.location.protocol}//${window.location.hostname}:3000/d/usage-overview`
+      : "http://localhost:3000/d/usage-overview";
+
   const isAdmin = roles.includes("admin");
 
   const load = async () => {
@@ -65,7 +70,7 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
             <p className="subhead">Prometheus-format metrics for all services.</p>
           </div>
           <div className="inline gap">
-            <a className="ghost" href="http://localhost:3000/d/usage-overview" target="_blank" rel="noreferrer">
+            <a className="ghost" href={grafanaUrl} target="_blank" rel="noreferrer">
               Open Grafana
             </a>
             <button onClick={load} disabled={loading}>
