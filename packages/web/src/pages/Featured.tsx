@@ -12,6 +12,7 @@ const FeaturedPage = ({ token, apiBase }: Props) => {
   const [discounts, setDiscounts] = useState<GameMetadata[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -19,8 +20,8 @@ const FeaturedPage = ({ token, apiBase }: Props) => {
     try {
       const headers = { Authorization: `Bearer ${token}` };
       const [freeRes, discountRes] = await Promise.all([
-        fetch(new URL("/metadata/featured/free?limit=12", apiBase).toString(), { headers }),
-        fetch(new URL("/metadata/featured/discounts?limit=12", apiBase).toString(), { headers }),
+        fetch(new URL("/metadata/featured/free?limit=24", apiBase).toString(), { headers }),
+        fetch(new URL("/metadata/featured/discounts?limit=24", apiBase).toString(), { headers }),
       ]);
       if (!freeRes.ok) throw new Error(`free failed ${freeRes.status}`);
       if (!discountRes.ok) throw new Error(`discounts failed ${discountRes.status}`);
@@ -29,6 +30,7 @@ const FeaturedPage = ({ token, apiBase }: Props) => {
       setFreeGames(freeJson.items || []);
       setDiscounts(discountJson.items || []);
       setStatus(`Cached ${Number(freeJson.cached || 0) + Number(discountJson.cached || 0)} new titles.`);
+      setLastUpdated(new Date().toLocaleTimeString());
     } catch (e: any) {
       setStatus(e?.message || "Failed to load featured games");
     } finally {
@@ -38,6 +40,8 @@ const FeaturedPage = ({ token, apiBase }: Props) => {
 
   useEffect(() => {
     load();
+    const id = setInterval(() => load(), 60000); // refresh every minute
+    return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, token]);
 
@@ -92,6 +96,7 @@ const FeaturedPage = ({ token, apiBase }: Props) => {
             </Link>
           </div>
           {status && <div className="callout">{status}</div>}
+          {lastUpdated && <div className="hint">Last updated: {lastUpdated}</div>}
         </div>
         <div className="hero-card">
           <span className="eyebrow">Tip</span>

@@ -13,6 +13,7 @@ const LiveSearchPage = ({ token, apiBase }: Props) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [counts, setCounts] = useState<Record<string, { loading?: boolean; value?: number | null; error?: string }>>({});
+  const [cacheStatus, setCacheStatus] = useState<Record<string, string>>({});
 
   const search = async () => {
     const q = liveQuery.trim();
@@ -49,14 +50,18 @@ const LiveSearchPage = ({ token, apiBase }: Props) => {
   };
 
   const addToCache = async (appId: string) => {
+    setCacheStatus((prev) => ({ ...prev, [appId]: "Caching…" }));
     try {
-      await fetch(`${apiBase}/metadata/games/cache`, {
+      const res = await fetch(`${apiBase}/metadata/games/cache`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ appId }),
       });
-    } catch {
-      /* ignore */
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || `Failed (${res.status})`);
+      setCacheStatus((prev) => ({ ...prev, [appId]: json?.cached ? "Already cached" : "Cached" }));
+    } catch (e: any) {
+      setCacheStatus((prev) => ({ ...prev, [appId]: e?.message || "Cache failed" }));
     }
   };
 
@@ -119,6 +124,7 @@ const LiveSearchPage = ({ token, apiBase }: Props) => {
                     <button className="ghost" onClick={() => addToCache(game.appId)}>
                       Add to cache
                     </button>
+                    {cacheStatus[game.appId] ? <span className="status">{cacheStatus[game.appId]}</span> : null}
                   </div>
                 </div>
               </article>
