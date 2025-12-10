@@ -10,18 +10,24 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
   const [metrics, setMetrics] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [htmlWarning, setHtmlWarning] = useState(false);
 
   const isAdmin = roles.includes("admin");
 
   const load = async () => {
     setLoading(true);
     setError(null);
+    setHtmlWarning(false);
     try {
-      const res = await fetch(new URL("/admin/usage", apiBase).toString(), {
+      const url = new URL("/admin/usage", apiBase).toString();
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const text = await res.text();
       if (!res.ok) throw new Error(text || `Failed (${res.status})`);
+      if (text.toLowerCase().includes("<!doctype html")) {
+        setHtmlWarning(true);
+      }
       setMetrics(text);
     } catch (e: any) {
       setError(e?.message || "Failed to load metrics");
@@ -61,6 +67,12 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
           </button>
         </div>
         {error ? <div className="callout warn">{error}</div> : null}
+        {htmlWarning ? (
+          <div className="callout warn">
+            Metrics response looks like HTML (probably the SPA). Ensure Caddy is proxying /admin/* to the gateway and retry. Showing raw
+            response below.
+          </div>
+        ) : null}
         {parsed.length ? (
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
             {parsed.slice(0, 30).map((m: any, i: number) => (
