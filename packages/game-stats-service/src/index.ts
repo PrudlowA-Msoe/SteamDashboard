@@ -27,6 +27,8 @@ const cacheTtlSeconds = process.env.CACHE_TTL_SECONDS ? Number(process.env.CACHE
 const metricsToken = process.env.METRICS_TOKEN || "prom-secret";
 const jwtSecret = process.env.JWT_SECRET || "dev-secret-change-me";
 const dotaLiveBase = "https://api.steampowered.com/IDOTA2Match_570";
+const leagueCache: Map<number, { name: string; tier?: string; lastUpdated: number }> = new Map();
+const teamCache: Map<number, { name: string; logo?: string; lastUpdated: number }> = new Map();
 
 const redis = createRedisClient({ url: redisUrl });
 redis.on("error", (err: Error) => console.error("[redis] error", err));
@@ -373,25 +375,48 @@ async function getFeaturedDotaGames() {
   const resp = await fetchWithRetry(url, {}, 2, 300);
   const json = (await resp.json()) as any;
   const games = json?.game_list || [];
+
+  // collect IDs for league/team hydration
+  const leagueIds = Array.from(new Set(games.map((g: any) => g.league_id).filter(Boolean)));
+  const teamIds = Array.from(
+    new Set(
+      games
+        .map((g: any) => [g.radiant_team_id, g.dire_team_id])
+        .flat()
+        .filter((id: any) => id !== undefined && id !== null),
+    ),
+  );
+
+  const [leagueMap, teamMap] = await Promise.all([hydrateLeagues(leagueIds), hydrateTeams(teamIds)]);
+
   return games.map((g: any) => ({
     matchId: g.match_id,
     spectators: g.spectators,
     averageMmr: g.average_mmr,
     radiant: {
-      name: g.radiant_name,
+      name: teamMap.get(g.radiant_team_id)?.name || g.radiant_name,
       score: g.radiant_score,
       towers: g.radiant_tower_state,
       barracks: g.radiant_barracks_state,
+      logo: teamMap.get(g.radiant_team_id)?.logo,
+      id: g.radiant_team_id,
     },
     dire: {
-      name: g.dire_name,
+      name: teamMap.get(g.dire_team_id)?.name || g.dire_name,
       score: g.dire_score,
       towers: g.dire_tower_state,
       barracks: g.dire_barracks_state,
+      logo: teamMap.get(g.dire_team_id)?.logo,
+      id: g.dire_team_id,
     },
     durationSeconds: g.game_time,
     roshanRespawnTimer: g.roshan_respawn_timer,
     league: g.league_id,
+    leagueName: leagueMap.get(g.league_id)?.name,
+    seriesType: seriesText(g.series_type),
+    gameNumber: g.game_number,
+    startTime: g.start_time,
+    state: formatObjectiveState(g),
     players: (g.players || []).map((p: any) => ({
       accountId: p.account_id,
       heroId: p.hero_id,
@@ -406,6 +431,81 @@ async function getFeaturedDotaGames() {
       name: p.name,
     })),
   }));
+}
+
+function seriesText(seriesType?: number) {
+  switch (seriesType) {
+    case 0:
+      return "Bo1";
+    case 1:
+      return "Bo3";
+    case 2:
+      return "Bo5";
+    default:
+      return "Live";
+  }
+}
+
+function formatObjectiveState(g: any) {
+  const towers = `Towers R${g.radiant_tower_state} / D${g.dire_tower_state}`;
+  const barracks = `Barracks R${g.radiant_barracks_state} / D${g.dire_barracks_state}`;
+  const rosh = g.roshan_respawn_timer ? `Roshan in ${g.roshan_respawn_timer}s` : "Roshan unknown";
+  return `${towers} • ${barracks} • ${rosh}`;
+}
+
+async function hydrateLeagues(ids: number[]) {
+  const map = new Map<number, { name: string; tier?: string }>();
+  const staleBefore = Date.now() - 5 * 60 * 1000;
+  for (const id of ids) {
+    const cached = leagueCache.get(id);
+    if (cached && cached.lastUpdated > staleBefore) {
+      map.set(id, { name: cached.name, tier: cached.tier });
+    }
+  }
+  const missing = ids.filter((id) => !map.has(id));
+  if (!missing.length) return new Map([...map]);
+  const url = `${dotaLiveBase}/GetLeagueListing/v1?key=${steamApiKey}&l=english`;
+  const resp = await fetchWithRetry(url, {}, 1, 300);
+  const json = (await resp.json()) as any;
+  const leagues = json?.result?.leagues || [];
+  leagues.forEach((l: any) => {
+    leagueCache.set(l.leagueid, { name: l.name, tier: l.tier, lastUpdated: Date.now() });
+    if (ids.includes(l.leagueid)) {
+      map.set(l.leagueid, { name: l.name, tier: l.tier });
+    }
+  });
+  return map;
+}
+
+async function hydrateTeams(ids: number[]) {
+  const map = new Map<number, { name: string; logo?: string }>();
+  const staleBefore = Date.now() - 5 * 60 * 1000;
+  const missing: number[] = [];
+  for (const id of ids) {
+    if (!id) continue;
+    const cached = teamCache.get(id);
+    if (cached && cached.lastUpdated > staleBefore) {
+      map.set(id, { name: cached.name, logo: cached.logo });
+    } else {
+      missing.push(id);
+    }
+  }
+  for (const id of missing) {
+    const url = `${dotaLiveBase}/GetTeamInfoByTeamID/v1?key=${steamApiKey}&team_id=${id}&teams_requested=1`;
+    try {
+      const resp = await fetchWithRetry(url, {}, 1, 300);
+      const json = (await resp.json()) as any;
+      const entry = json?.result?.teams?.[0];
+      if (entry) {
+        const logo = entry.logo_url || entry.logo;
+        teamCache.set(id, { name: entry.name || entry.tag || `Team ${id}`, logo, lastUpdated: Date.now() });
+        map.set(id, { name: entry.name || entry.tag || `Team ${id}`, logo });
+      }
+    } catch (err) {
+      console.error("[dota_live] team hydrate failed", err);
+    }
+  }
+  return map;
 }
 function statusText(state: number) {
   switch (state) {
