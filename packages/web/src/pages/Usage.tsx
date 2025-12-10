@@ -22,6 +22,7 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
       const url = new URL("/admin/usage", apiBase).toString();
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
       const text = await res.text();
       if (!res.ok) throw new Error(text || `Failed (${res.status})`);
