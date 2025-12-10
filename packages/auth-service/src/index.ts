@@ -173,6 +173,14 @@ const callbackHandler = (req: express.Request, res: express.Response) => {
   relyingParty.verifyAssertion(req, async (err: any, result?: any) => {
     try {
       if (err || !result?.claimedIdentifier) {
+        console.error("steam verify failed", {
+          err,
+          result,
+          host: req.headers.host,
+          url: req.url,
+          originalUrl: req.originalUrl,
+          protocol: req.protocol,
+        });
         return res.status(401).send("Steam login failed");
       }
       const steamId = result.claimedIdentifier.split("/").pop() || "";
