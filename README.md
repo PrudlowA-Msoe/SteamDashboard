@@ -1,140 +1,114 @@
 # Steam Live Game Stats Dashboard
 
-Microservice-based web app that surfaces real-time and historical stats for selected Steam games and players. Includes role-based auth, near real-time match updates, cached game metadata, and admin-facing usage metrics.
+Microservices web app that surfaces real-time and historical Steam game/player data (game metadata, live Dota matches, player stats, friends, news, player counts) with RBAC, usage metrics, and an admin Usage console.
 
-## Architecture (proposed)
-- API Gateway: HTTPS entrypoint, JWT verification, request throttling, routes to downstream services; also upgrades to WebSocket for live feeds.
-- Auth & Profile Service: Steam OpenID login, account linking, RBAC (user/admin), stores profiles/preferences.
-- Game & Player Stats Service: Calls Steam Web API + third-party sources to aggregate player/game stats; exposes REST; caches responses.
-- Live Match Service: Polls match endpoints (initially Dota 2), normalizes events, pushes to Kafka (or Redis Streams) + WebSocket topics.
-- Game Metadata Service: Caches app metadata (name/icon/genre/tags/platform) with TTL; pre-warms popular titles.
-- Usage Metrics Service: Ingests request/latency counters via OTLP; serves secured admin metrics API.
-- Web Client: SPA for dashboards (player views, leaderboards, live match feed) and admin metrics console.
+## Architecture & Containers
+- **api-gateway** (Node/Express): single entry point, JWT/RBAC enforcement, metrics, proxies `/auth`, `/metadata`, `/stats`, `/live`, `/players`, `/admin`.
+- **auth-service** (Node/Express): Steam OpenID login, issues JWT with roles (admin/user). Admins can be force-listed via `ADMIN_STEAM_IDS`.
+- **metadata-service** (Node/Express): cached game metadata, live store search, featured free/discounted games, cache add.
+- **game-stats-service** (Node/Express): Steam Web API aggregation (owned games, spotlight, player stats, friends, inventory), Dota live feed, player-count snapshots, achievement aggregation, news.
+- **live-service** (Node/Express): live/event placeholder (kept in stack for live updates).
+- **web** (React/Vite): multi-page SPA (Discover, Live Search, Featured, Dota Live, Game Spotlight, Profile, News, Usage).
+- **postgres**: persistent store (profiles, snapshots, player_count_snapshots, metadata cache).
+- **redis**: caching for upstream calls, spotlight, schemas.
+- **kafka + zookeeper**: event streaming backbone (included; Dota live scaffolding ready).
+- **prometheus**: scrapes service metrics.
+- **grafana**: dashboards (usage-overview, steam-dashboard).
+- **caddy**: TLS termination + reverse proxy (serves `/`, proxies API paths, `/grafana`).
 
-## Tech Stack (suggested)
-- Backend: TypeScript + NestJS (HTTP + WebSocket + cron); zod for validation; axios/fetch for upstream calls.
-- Data: PostgreSQL for persistent user/profile data; Redis for caching and rate-limits; Kafka (or Redis Streams if simpler) for live match/event fan-out.
-- Metrics/Tracing: OpenTelemetry SDK -> Prometheus; Grafana dashboards.
-- Auth: Steam OpenID -> JWT (RS256), refresh tokens, role claims; optional Discord linking later.
-- Frontend: React + Vite + TypeScript; Socket.IO client (or native ws) for live channels; TanStack Query for data fetching; Tailwind for UI.
-- Containers/Orchestration: Docker Compose for local; Kubernetes (Helm) for cloud deployment; Traefik/Ingress NGINX as ingress.
+## Running locally / on the droplet
+Prereqs: Docker + docker compose.
 
-## Data Flow
-1) User signs in via Steam OpenID at Auth service; receives JWT with roles + profile id.
-2) Web client calls API Gateway with JWT; gateway forwards to services.
-3) Game & Player Stats fetches from Steam Web API, normalizes, caches in Redis; writes historical snapshots to Postgres.
-4) Live Match polls Dota 2 match endpoint on schedule, emits normalized events to Kafka; WebSocket gateway subscribes and fans out to rooms.
-5) Usage Metrics receives OTLP spans/metrics from services and exposes admin-only metrics summaries.
-6) Game Metadata serves cached app details to avoid repeated upstream calls.
-
-## Key Endpoints (initial cut)
-- Auth: `POST /auth/steam/callback`, `POST /auth/refresh`, `GET /me`, `GET /me/roles`
-- Profiles: `GET /profiles/:id`, `PATCH /profiles/:id` (self/admin), `POST /profiles/link-steam`
-- Game Stats: `GET /games/:appId/summary`, `GET /games/:appId/leaderboard`, `GET /players/:steamId/stats`
-- Live Match: `GET /live/dota/matches/:matchId`, WS channel `ws://.../live/dota/:matchId`
-- Metadata: `GET /metadata/games/:appId`, `GET /metadata/search?q=`
-- Metrics (admin): `GET /admin/metrics/usage`, `GET /admin/metrics/latency`, `GET /admin/health`
-
-## Events / Topics
-- Kafka topics (or Redis Streams):
-  - `live.dota.match.{matchId}`: match events (kills/objectives/timeline)
-  - `metrics.requests`: summarized request counts/latencies
-  - `metadata.refresh`: cache invalidation requests
-
-## Config & Secrets
-- `STEAM_API_KEY`, `JWT_PUBLIC/PRIVATE`, `POSTGRES_URL`, `REDIS_URL`, `KAFKA_BROKERS`, `OTLP_ENDPOINT`.
-- Use Doppler/Vault/K8s secrets; never bake into images.
-
-## Deployment
-- Local: `docker compose up` with services + Postgres + Redis + Kafka + Prometheus + Grafana.
-- Cloud: Container registry -> CI deploy to Kubernetes; ingress TLS via cert-manager; autoscale Live Match and Game Stats services independently.
-
-## Observability & Ops
-- OpenTelemetry tracing (HTTP + DB + Kafka) across services.
-- Prometheus scraping + Grafana dashboards (user/API latency, cache hit rate, match ingest lag).
-- Structured logging (JSON) with correlation ids; log aggregation via Loki/ELK.
-
-## Security / RBAC
-- Role claims: `user`, `admin`.
-- Gateway enforces JWT + rate limits; admin routes require `admin`.
-- Service-to-service auth via mTLS or signed service tokens.
-
-## Initial Milestones
-1) Skeleton repo: shared `proto`/contracts, docker-compose, gateway + Auth service stub with Steam login mocked.
-2) Implement Game Metadata cache + endpoints; wire React UI to list/search games.
-3) Add Game & Player Stats with caching and basic charts in UI.
-4) Add Live Match polling + WebSocket fan-out; build live match viewer.
-5) Integrate metrics OTEL -> Prometheus; admin metrics screen.
-
-## Current Status (local dev scaffold)
-- Monorepo with workspaces: `api-gateway`, `auth-service`, `metadata-service`, `game-stats-service`, `live-service`, `web`.
-- Docker Compose includes gateway/services + Postgres, Redis, Kafka/ZooKeeper, Prometheus, Grafana.
-- Game Stats service integrates Steam Web API (player summaries/owned/recent) with Redis + Postgres snapshotting; game metadata fetched from Steam Store API with caching.
-- Live service exposes a Dota-style simulated live feed via SSE; designed to swap in real polling or Kafka later.
-- Metrics: `/metrics` exposed on gateway, auth, metadata, live, game-stats; Prometheus config targets them.
-- Web UI: search cached games; query player stats (needs `STEAM_API_KEY` + JWT); lookup live app summaries via stats service (shows current player counts when available).
-
-### Install
-```bash
-npm install
+1) Set env in `.env` (root):
 ```
-Run tests for the retry helper:
-```bash
-npm test
+STEAM_API_KEY=your_steam_api_key
+JWT_SECRET=your_strong_secret
+ADMIN_STEAM_IDS=76561198168642529   # admins
+AUTH_BASE_URL=https://steamviewdashboard.online/auth   # for prod; http://localhost:4001 for local
+FRONTEND_URL=https://steamviewdashboard.online        # for prod; http://localhost:4173 for local
+VITE_API_BASE=https://steamviewdashboard.online       # for prod; http://localhost:4000 for local
 ```
 
-### Run services (local, no containers)
-- Gateway: `npm run dev:gateway`
-- Auth stub: `npm run dev:auth`
-- Metadata: `npm run dev:metadata`
-- Game stats: `npm run dev:stats`
-- Live: `npm run dev:live`
-- Web (Vite dev server): `npm run dev:web`
-
-> Services default to ports 4000 (gateway), 4001 (auth), 4002 (metadata), 4003 (live), 4004 (game-stats), 5173 (web). Adjust via env vars if needed.
-> Gateway enforces JWT on proxied routes; paste a token from `POST /auth/steam/callback` into the web UI or set `VITE_AUTH_TOKEN`.
-
-### Build (all workspaces)
-```bash
-npm run build
+2) Build and run:
+```
+docker compose up -d --build
 ```
 
-### Docker Compose
+3) Services listen on:
+- Gateway: 4000 (through Caddy at 80/443 in prod)
+- Auth: 4001
+- Metadata: 4002
+- Live: 4003
+- Game-stats: 4004
+- Web: 4173 (through Caddy 80/443)
+- Grafana: 3000 (exposed and also via `/grafana`)
+- Prometheus: 9090
+
+4) Steam login: use `/auth/steam/login?redirect=<front_end>` via the web UI. Admin SteamIDs automatically get `admin` role.
+
+5) Usage/admin metrics:
+- In-app: `/usage` (admin only) fetches gateway metrics.
+- Grafana: `https://<your-domain>/grafana/d/usage-overview` (served from sub-path via Caddy); default Grafana admin password is set in compose (`admin`).
+
+## API (selected endpoints)
+- Auth: `POST /auth/steam/login` (redirect), `POST /auth/steam/callback`, `GET /auth/health`, `GET /auth/metrics` (Bearer prom-secret), `POST /auth/refresh`.
+- Metadata: `GET /metadata/games`, `POST /metadata/games/cache` (body: `{appId}`), `GET /metadata/search/live?q=`, `GET /metadata/featured/free|discounts`.
+- Stats / Spotlight:
+  - `GET /stats/spotlight/owned` (auth) – owned + recent games.
+  - `GET /stats/spotlight/:appId` (auth) – aggregated spotlight (playtime, achievements, current players, news, trend).
+  - `GET /stats/games/:appId/summary` – game summary + current players.
+  - `GET /stats/live/dota/featured` – live Dota matches (with league/team hydration).
+  - `GET /players/:steamId/friends`, `GET /players/:steamId/inventory`.
+- Admin metrics: `GET /admin/usage` and `/stats/admin/usage` (JWT admin role).
+
+Simple use case (Game Spotlight):
+1) User logs in with Steam.
+2) Frontend calls `GET /stats/spotlight/owned` to seed picker, selects appId.
+3) Frontend calls `GET /stats/spotlight/:appId` to render playtime, achievements, current players, trend, and news.
+
+## How requirements are met
+- **Microservices with multiple endpoints + consumer app:** Gateway, auth-service, metadata-service, game-stats-service, live-service, web SPA consuming REST APIs; Kafka included for event streaming.
+- **Containerized deployment on cloud:** Docker Compose stack running on a cloud droplet with Caddy TLS.
+- **Access controls:** JWT + roles enforced at gateway; admin-only endpoints (`/admin/usage`, `/stats/admin/usage`); metrics token on `/metrics`.
+- **Usage stats per endpoint + admin access:** Prometheus metrics emitted by each service; admin endpoints expose metrics; Grafana dashboards available.
+
+Additional requirements (fulfilled):
+- **Storage in containers:** Postgres + Redis.
+- **Event streaming:** Kafka + Zookeeper included for live/event streaming.
+- **Monitoring:** Prometheus + Grafana provisioned dashboards.
+- **Novel/entertainment value:** Steam game/live match dashboard with spotlight, achievements, live Dota, featured games, and admin usage views.
+
+## Notes
+- Admin SteamID default: `76561198168642529` (override via `ADMIN_STEAM_IDS`).
+- Grafana served from `/grafana`; Prometheus at 9090.
+- TLS handled by Caddy; set proper domain/email in `deploy/Caddyfile`.
+
+## Performance/load test (k6)
+We include a simple k6 script under `load/load-test.js` to measure latency under load.
+
+### Prereqs
+- k6 installed locally (`brew install k6`) **or** use Docker: `docker run --rm -i -v $PWD:/scripts grafana/k6 run /scripts/load/load-test.js`
+- A valid JWT in `JWT` env var for authenticated endpoints.
+
+### Run with k6 locally
 ```bash
-docker compose up --build
+JWT="Bearer your_jwt_here" BASE=https://steamviewdashboard.online VUS=30 DURATION=2m k6 run load/load-test.js
 ```
-Services exposed:
-- Gateway: http://localhost:4000
-- Auth: http://localhost:4001
-- Metadata: http://localhost:4002
-- Live: http://localhost:4003
-- Game Stats: http://localhost:4004
-- Web (preview server): http://localhost:4173
-- Postgres: localhost:5432 (`steamapp`/`steamapp`)
-- Redis: localhost:6379
-- Kafka: localhost:9092 (ZK at 2181)
-- Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000 (admin/admin)
+- Env vars:
+  - `JWT`: auth header value (include `Bearer ...`), optional for public endpoints.
+  - `BASE`: target base URL (default `https://steamviewdashboard.online`).
+  - `VUS`: virtual users (default 20).
+  - `DURATION`: test duration (default `2m`).
 
-Prometheus config lives at `deploy/prometheus/prometheus.yml` (gateway/auth/metadata/live/stats scrape enabled).
-Grafana provisioning at `deploy/grafana/...` with a starter dashboard plotting cache hit rates and gateway latency.
+### Run with Docker k6
+```bash
+docker run --rm -i -e JWT="Bearer your_jwt_here" -e BASE=https://steamviewdashboard.online -e VUS=30 -e DURATION=2m -v $PWD:/scripts grafana/k6 run /scripts/load/load-test.js
+```
 
-### Environment
-- `STEAM_API_KEY` (required for player stats; set in shell or docker compose env)
-- `REDIS_URL` (default `redis://localhost:6379` or service address)
-- `POSTGRES_URL` (default `postgres://steamapp:steamapp@localhost:5432/steamapp`)
-- `JWT_SECRET` (gateway/auth shared; defaults to `dev-secret-change-me`)
-- `METRICS_TOKEN` (bearer token to scrape `/metrics`; defaults to `prom-secret` and used by Prometheus config)
+### What it measures
+- Requests to `/stats/spotlight/owned`, `/metadata/games`, `/stats/games/570/summary`
+- Reports p50/p90/p95/p99 latencies, failure rate, and RPS in the k6 summary output.
 
-### API sketch (stubs)
-- Gateway health: `GET /health`
-- Auth: `POST /auth/steam/callback` (body `{ steamId?, personaName?, admin? }`), `POST /auth/refresh`, `GET /auth/me`
-- Metadata: `GET /metadata/games?q=`, `GET /metadata/search?q=`, `GET /metadata/games/:appId`
-- Game Stats: `GET /stats/games/:appId/summary` (cached Steam Store metadata), `GET /stats/players/:steamId/stats` (Steam Web API, cached + snapshot to Postgres)
-- Live (SSE demo): `GET /live/dota/matches/:matchId`, `GET /live/dota/matches/:matchId/stream`
-- Metrics: `GET /metrics` on each service
-
-### Web UI
-- Dev server: `npm run dev:web`
-- API base: set `VITE_API_BASE` (defaults to `http://localhost:4000`)
-- Features: search/filter cached games; fetch player stats by SteamID; lookup live app summaries via stats service; demo live service endpoint for future integration.
+### Reporting
+- Save output to a file, e.g.: `k6 run load/load-test.js > reports/k6-spotlight.txt`
+- Adjust VUs/duration/endpoints as needed; use thresholds in the script to assert targets (defaults: p95<600ms, p99<900ms, errors<1%).
