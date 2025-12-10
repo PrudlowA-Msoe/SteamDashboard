@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface Props {
   token: string;
@@ -63,7 +63,7 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
         {error ? <div className="callout warn">{error}</div> : null}
         {parsed.length ? (
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
-            {parsed.slice(0, 30).map((m, i) => (
+            {parsed.slice(0, 30).map((m: any, i: number) => (
               <div className="card" key={`${m.name}-${i}`}>
                 <div className="card-body">
                   <div className="card-header">
