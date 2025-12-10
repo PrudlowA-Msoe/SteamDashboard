@@ -65,7 +65,6 @@ async function serveUsageMetrics(req: express.Request, res: express.Response) {
 app.get("/admin/usage", serveUsageMetrics);
 // Alternate path routed via /stats/* proxy to avoid frontend/caddy routing issues
 app.get("/stats/admin/usage", serveUsageMetrics);
-});
 
 app.use((req, res, next) => {
   const end = httpDuration.startTimer({ route: req.path, method: req.method });
