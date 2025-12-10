@@ -4,22 +4,22 @@ steamviewdashboard.online, www.steamviewdashboard.online {
   tls andrewprudlow@gmail.com
 
   # API + auth paths routed to the gateway
-  handle_path /auth/* {
+  handle /auth/* {
     reverse_proxy api-gateway:4000
   }
-  handle_path /metadata/* {
+  handle /metadata/* {
     reverse_proxy api-gateway:4000
   }
-  handle_path /stats/* {
+  handle /stats/* {
     reverse_proxy api-gateway:4000
   }
-  handle_path /players/* {
+  handle /players/* {
     reverse_proxy api-gateway:4000
   }
-  handle_path /steam/* {
+  handle /steam/* {
     reverse_proxy api-gateway:4000
   }
-  handle_path /live/* {
+  handle /live/* {
     reverse_proxy api-gateway:4000
   }
 
