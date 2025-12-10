@@ -1,0 +1,121 @@
+{
+  "id": null,
+  "title": "API Usage Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Gateway RPS (5m)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(gateway_http_request_duration_seconds_count[5m]))", "refId": "A" }
+      ],
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "Gateway Error Rate (5m)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(gateway_http_request_duration_seconds_count{status_code!~\"2..\"}[5m])) / sum(rate(gateway_http_request_duration_seconds_count[5m]))",
+          "refId": "A"
+        }
+      ],
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] }, "suffix": "" }
+    },
+    {
+      "type": "stat",
+      "title": "Gateway p95 (ms)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(gateway_http_request_duration_seconds_bucket[5m])) by (le)) * 1000",
+          "refId": "A"
+        }
+      ],
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "timeseries",
+      "title": "RPS by route (gateway)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(gateway_http_request_duration_seconds_count[5m])) by (route,method)",
+          "legendFormat": "{{route}} {{method}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p95 by service",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le)(rate(metadata_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "metadata",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le)(rate(auth_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "auth",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le)(rate(game_stats_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "game-stats",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le)(rate(live_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "live",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Upstream (Steam) duration avg by endpoint",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum(rate(steam_upstream_duration_seconds_sum[5m])) by (endpoint) / sum(rate(steam_upstream_duration_seconds_count[5m])) by (endpoint)",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error counts by service",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum(rate(gateway_http_request_duration_seconds_count{status_code!~\"2..\"}[5m]))",
+          "legendFormat": "gateway",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(metadata_http_request_duration_seconds_count{status_code!~\"2..\"}[5m]))",
+          "legendFormat": "metadata",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(auth_http_request_duration_seconds_count{status_code!~\"2..\"}[5m]))",
+          "legendFormat": "auth",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(rate(game_stats_http_request_duration_seconds_count{status_code!~\"2..\"}[5m]))",
+          "legendFormat": "game-stats",
+          "refId": "D"
+        }
+      ]
+    }
+  ]
+}

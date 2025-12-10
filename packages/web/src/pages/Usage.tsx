@@ -64,9 +64,14 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
             <h2>Usage metrics</h2>
             <p className="subhead">Prometheus-format metrics for all services.</p>
           </div>
-          <button onClick={load} disabled={loading}>
-            {loading ? "Loading…" : "Refresh"}
-          </button>
+          <div className="inline gap">
+            <a className="ghost" href="http://localhost:3000/d/usage-overview" target="_blank" rel="noreferrer">
+              Open Grafana
+            </a>
+            <button onClick={load} disabled={loading}>
+              {loading ? "Loading…" : "Refresh"}
+            </button>
+          </div>
         </div>
         {error ? <div className="callout warn">{error}</div> : null}
         {htmlWarning ? (
