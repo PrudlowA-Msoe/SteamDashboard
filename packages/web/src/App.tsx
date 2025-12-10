@@ -10,6 +10,7 @@ import LiveDotaPage from "./pages/LiveDota";
 import HomePage from "./pages/Home";
 import FeaturedPage from "./pages/Featured";
 import GameSpotlightPage from "./pages/GameSpotlight";
+import UsagePage from "./pages/Usage";
 import { decodeToken } from "./utils/token";
 
 const runtimeOrigin = typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
@@ -78,6 +79,7 @@ const App = () => {
   const decoded = decodeToken(token);
   const steamId = decoded?.steamId || "";
   const personaName = decoded?.personaName || "User";
+  const roles = decoded?.roles || [];
 
   if (!authed || !token) {
     return (
@@ -127,6 +129,7 @@ const App = () => {
           <Route path="/players" element={<ProfilePage token={token} apiBase={API_BASE} steamId={steamId} personaName={personaName} />} />
           <Route path="/profile" element={<ProfilePage token={token} apiBase={API_BASE} steamId={steamId} personaName={personaName} />} />
           <Route path="/news" element={<NewsPage token={token} apiBase={API_BASE} />} />
+          <Route path="/usage" element={<UsagePage token={token} apiBase={API_BASE} roles={roles} />} />
           <Route path="/games/:appId" element={<GameDetailsPage token={token} apiBase={API_BASE} />} />
         </Routes>
       </div>

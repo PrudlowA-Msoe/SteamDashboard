@@ -45,6 +45,23 @@ app.get("/metrics", async (req, res) => {
   res.end(await metricsRegistry.metrics());
 });
 
+app.get("/admin/usage", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  try {
+    const payload = jwt.verify(authHeader.slice(7), jwtSecret) as jwt.JwtPayload & { roles?: string[] };
+    if (!payload.roles || !payload.roles.includes("admin")) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    res.set("Content-Type", metricsRegistry.contentType);
+    res.end(await metricsRegistry.metrics());
+  } catch {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+});
+
 app.use((req, res, next) => {
   const end = httpDuration.startTimer({ route: req.path, method: req.method });
   res.on("finish", () => end({ status_code: res.statusCode }));

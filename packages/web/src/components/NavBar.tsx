@@ -33,6 +33,9 @@ const NavBar = ({ onLogout }: Props) => {
         <Link className={isActive("/spotlight")} to="/spotlight">
           Game Spotlight
         </Link>
+        <Link className={isActive("/usage")} to="/usage">
+          Usage
+        </Link>
         <Link className={isActive("/profile") || isActive("/players")} to="/profile">
           Profile
         </Link>

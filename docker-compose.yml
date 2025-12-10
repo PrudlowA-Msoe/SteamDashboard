@@ -42,6 +42,7 @@ services:
       METRICS_TOKEN: prom-secret
       BASE_URL: ${AUTH_BASE_URL:-http://localhost:4001}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4173}
+      ADMIN_STEAM_IDS: ${ADMIN_STEAM_IDS:-76561198168642529}
 
     ports:
       - "4001:4001"

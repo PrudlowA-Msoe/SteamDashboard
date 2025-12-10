@@ -49,6 +49,7 @@ interface Profile {
 const profiles = new Map<string, Profile>();
 const pool = new Pool({ connectionString: postgresUrl });
 pool.on("error", (err: Error) => console.error("[postgres] error", err));
+const adminSteamIds = (process.env.ADMIN_STEAM_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
 
 const createRelyingParty = (returnTo: string) => new openid.RelyingParty(returnTo, publicOrigin, true, false, []);
 
@@ -111,7 +112,7 @@ app.post("/steam/callback", (req, res) => {
   const personaName = String(req.body.personaName || `User-${steamId.slice(-6)}`);
   const isAdmin = Boolean(req.body.admin);
   const id = nanoid();
-  const roles: Role[] = ["user", ...(isAdmin ? (["admin"] as Role[]) : [])];
+  const roles: Role[] = ["user", ...(isAdmin ? (["admin"] as Role[]) : []), ...(adminSteamIds.includes(steamId) ? (["admin"] as Role[]) : [])];
   const profile: Profile = { id, steamId, personaName, roles };
   profiles.set(id, profile);
   persistProfile(profile).catch((err) => console.error("[postgres] failed to persist profile", err));
@@ -189,7 +190,7 @@ const callbackHandler = (req: express.Request, res: express.Response) => {
       const steamId = result.claimedIdentifier.split("/").pop() || "";
       const personaName = (await getPersona(steamId)) || `User-${steamId.slice(-6)}`;
       const id = nanoid();
-      const profile: Profile = { id, steamId, personaName, roles: ["user"] };
+      const profile: Profile = { id, steamId, personaName, roles: ["user", ...(adminSteamIds.includes(steamId) ? (["admin"] as Role[]) : [])] };
       profiles.set(id, profile);
       persistProfile(profile).catch((e) => console.error("[postgres] persist profile", e));
       const token = issueToken(profile);

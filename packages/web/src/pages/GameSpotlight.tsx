@@ -188,7 +188,15 @@ const GamePicker = ({
               onClick={() => onSelect(String(g.appid))}
               aria-pressed={String(g.appid) === selectedAppId}
             >
-          {icon ? <img src={icon} alt={g.name} /> : <div className="placeholder" style={{ height: 120 }} />}
+              {icon ? (
+                <img
+                  src={`https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/header.jpg`}
+                  alt={g.name}
+                  style={{ objectFit: "cover", height: 180 }}
+                />
+              ) : (
+                <div className="placeholder" style={{ height: 120 }} />
+              )}
               <div className="card-body">
                 <div className="card-header">
                   <h3>{g.name}</h3>
@@ -210,7 +218,13 @@ const GamePicker = ({
 const SpotlightHeader = ({ spot }: { spot: SpotlightVM }) => (
   <div className="hero-card">
     <div className="inline gap">
-      {spot.iconUrl ? <img src={spot.iconUrl} alt={spot.gameName} style={{ width: 64, height: 64, borderRadius: 12 }} /> : null}
+      {spot.iconUrl ? (
+        <img
+          src={`https://cdn.cloudflare.steamstatic.com/steam/apps/${spot.appId}/header.jpg`}
+          alt={spot.gameName}
+          style={{ width: 260, height: 120, borderRadius: 12, objectFit: "cover" }}
+        />
+      ) : null}
       <div>
         <h2>{spot.gameName}</h2>
         <p className="subhead">
