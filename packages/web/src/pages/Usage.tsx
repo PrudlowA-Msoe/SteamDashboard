@@ -92,8 +92,18 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
             <div className="card">
               <div className="card-body">
                 <div className="card-header">
-                  <h3>Service status</h3>
-                  <p className="meta">Prometheus `up` metrics</p>
+                  <div>
+                    <h3>Service status</h3>
+                    <p className="meta">Based on Prometheus `up` metric</p>
+                  </div>
+                  <div className="inline gap">
+                    <div className="pill pill-success">
+                      Online: {serviceStatus.filter((s) => s.up).length}
+                    </div>
+                    <div className="pill pill-warn">
+                      Offline: {serviceStatus.filter((s) => !s.up).length}
+                    </div>
+                  </div>
                 </div>
                 <table className="table">
                   <thead>
@@ -150,9 +160,12 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
             <div className="empty">No parsed metrics yet. You can still view the raw output below.</div>
           )}
         </div>
-        <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", background: "rgba(0,0,0,0.4)", padding: 12, borderRadius: 12 }}>
-          {metrics || "No metrics loaded yet."}
-        </pre>
+        <details style={{ marginTop: 16 }}>
+          <summary>Raw metrics response</summary>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", background: "rgba(0,0,0,0.4)", padding: 12, borderRadius: 12 }}>
+            {metrics || "No metrics loaded yet."}
+          </pre>
+        </details>
       </div>
     </div>
   );
