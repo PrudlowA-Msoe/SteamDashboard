@@ -129,13 +129,13 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
             </div>
           ) : null}
 
-          {endpointUsage.length ? (
-            <div className="card">
-              <div className="card-body">
-                <div className="card-header">
-                  <h3>Endpoint usage</h3>
-                  <p className="meta">Grouped by route and status (counts from request metrics)</p>
-                </div>
+          <div className="card">
+            <div className="card-body">
+              <div className="card-header">
+                <h3>Endpoint usage</h3>
+                <p className="meta">Grouped by route and status (counts from request metrics)</p>
+              </div>
+              {endpointUsage.length ? (
                 <table className="table">
                   <thead>
                     <tr>
@@ -154,11 +154,14 @@ const UsagePage = ({ token, apiBase, roles }: Props) => {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              ) : (
+                <div className="empty">
+                  No endpoint metrics detected. Ensure request metrics are enabled in the gateway/service (e.g., labeled with
+                  route/path/status).
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="empty">No parsed metrics yet. You can still view the raw output below.</div>
-          )}
+          </div>
         </div>
         <details style={{ marginTop: 16 }}>
           <summary>Raw metrics response</summary>
@@ -204,10 +207,22 @@ function parsePrometheus(text: string): Sample[] {
 
 function summarizeServices(samples: Sample[]): Array<{ name: string; up: boolean }> {
   const filtered = samples
-    .filter((s) => s.name === "up" && Number.isFinite(s.value))
+    .filter((s) => {
+      if (s.name === "up") return true;
+      if (s.name.endsWith("_up")) return true;
+      if (s.name.includes("process_start_time_seconds")) return true;
+      return false;
+    })
     .map((s) => {
-      const svc = s.labels.job || s.labels.service || s.labels.instance || "unknown";
-      return { name: svc, up: s.value === 1 };
+      const svc =
+        s.labels.job ||
+        s.labels.service ||
+        s.labels.instance ||
+        s.labels.app ||
+        inferServiceName(s.name) ||
+        "unknown";
+      const up = s.name.includes("up") ? s.value === 1 : true; // presence implies alive for process metrics
+      return { name: svc, up };
     });
 
   const dedup = filtered.reduce((acc: Record<string, { name: string; up: boolean }>, cur) => {
@@ -221,11 +236,11 @@ function summarizeServices(samples: Sample[]): Array<{ name: string; up: boolean
 function summarizeEndpoints(samples: Sample[]): Array<{ route: string; status: string; count: number }> {
   const endpointLike = samples.filter((s) => {
     const route = pickRoute(s.labels);
-    return route && /request/i.test(s.name) && Number.isFinite(s.value);
+    return route && /request|http|handler/i.test(s.name) && Number.isFinite(s.value);
   });
   const buckets: Record<string, { route: string; status: string; count: number }> = {};
   for (const s of endpointLike) {
-    const route = pickRoute(s.labels) || "unknown";
+    const route = pickRoute(s.labels) || inferServiceName(s.name) || "unknown";
     const status = s.labels.status || s.labels.code || "all";
     const key = `${route}|${status}`;
     if (!buckets[key]) buckets[key] = { route, status, count: 0 };
@@ -236,4 +251,10 @@ function summarizeEndpoints(samples: Sample[]): Array<{ route: string; status: s
 
 function pickRoute(labels: Record<string, string>): string | undefined {
   return labels.route || labels.path || labels.endpoint || labels.handler;
+}
+
+function inferServiceName(metricName: string): string | undefined {
+  const prefix = metricName.split("_")[0];
+  if (!prefix || prefix.length > 40) return undefined;
+  return prefix;
 }
